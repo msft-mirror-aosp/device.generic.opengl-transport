@@ -24,8 +24,6 @@ endif
 # common cflags used by several modules
 # This is always set to a module's LOCAL_CFLAGS
 # See the definition of emugl-begin-module in common.mk
-#
-EMUGL_COMMON_CFLAGS := -DWITH_GLES2
 
 # Define EMUGL_BUILD_DEBUG=1 in your environment to build a
 # debug version of the EmuGL host binaries.
