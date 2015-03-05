@@ -14,14 +14,15 @@
 * limitations under the License.
 */
 #include "ColorBuffer.h"
-#include "FrameBuffer.h"
+
 #include "EGLDispatch.h"
-#include "GLDispatch.h"
-#include "ThreadInfo.h"
+#include "FrameBuffer.h"
+#include "GLESv1Dispatch.h"
 #include "GLcommon/GLutils.h"
 #ifdef WITH_GLES2
-#include "GL2Dispatch.h"
+#include "GLESv2Dispatch.h"
 #endif
+#include "RenderThreadInfo.h"
 #include <stdio.h>
 
 ColorBuffer *ColorBuffer::create(int p_width, int p_height,
@@ -141,6 +142,16 @@ ColorBuffer::~ColorBuffer()
     GLuint tex[2] = {m_tex, m_blitTex};
     s_gl.glDeleteTextures(2, tex);
 
+    fb->unbind_locked();
+}
+
+void ColorBuffer::readPixels(int x, int y, int width, int height, GLenum p_format, GLenum p_type, void *pixels)
+{
+    FrameBuffer *fb = FrameBuffer::getFB();
+    if (!fb->bind_locked()) return;
+    if (bind_fbo()) {
+        s_gl.glReadPixels(x, y, width, height, p_format, p_type, pixels);
+    }
     fb->unbind_locked();
 }
 

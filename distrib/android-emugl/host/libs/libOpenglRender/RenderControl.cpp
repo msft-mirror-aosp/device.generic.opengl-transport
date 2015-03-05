@@ -13,13 +13,14 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-#include "renderControl_dec.h"
-#include "FrameBuffer.h"
+#include "RenderControl.h"
+
 #include "FBConfig.h"
+#include "FrameBuffer.h"
 #include "EGLDispatch.h"
-#include "GLDispatch.h"
-#include "GL2Dispatch.h"
-#include "ThreadInfo.h"
+#include "GLESv2Dispatch.h"
+#include "GLESv1Dispatch.h"
+#include "RenderThreadInfo.h"
 
 static const GLint rendererVersion = 1;
 
@@ -322,7 +323,12 @@ static void rcReadColorBuffer(uint32_t colorBuffer,
                               GLint width, GLint height,
                               GLenum format, GLenum type, void* pixels)
 {
-   // XXX: TBD - should be implemented
+    FrameBuffer *fb = FrameBuffer::getFB();
+    if (!fb) {
+        return;
+    }
+
+    fb->readColorBuffer(colorBuffer, x, y, width, height, format, type, pixels);
 }
 
 static int rcUpdateColorBuffer(uint32_t colorBuffer,

@@ -27,8 +27,8 @@
 #endif
 
 #include "EGLDispatch.h"
-#include "GLDispatch.h"
-#include "GL2Dispatch.h"
+#include "GLESv1Dispatch.h"
+#include "GLESv2Dispatch.h"
 
 static RenderServer *s_renderThread = NULL;
 static char s_renderAddr[256];

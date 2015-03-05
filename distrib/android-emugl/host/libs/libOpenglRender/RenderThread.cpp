@@ -14,14 +14,15 @@
 * limitations under the License.
 */
 #include "RenderThread.h"
-#include "RenderControl.h"
-#include "ThreadInfo.h"
-#include "ReadBuffer.h"
-#include "TimeUtils.h"
-#include "GLDispatch.h"
-#include "GL2Dispatch.h"
+
 #include "EGLDispatch.h"
 #include "FrameBuffer.h"
+#include "GLESv2Dispatch.h"
+#include "GLESv1Dispatch.h"
+#include "ReadBuffer.h"
+#include "RenderControl.h"
+#include "RenderThreadInfo.h"
+#include "TimeUtils.h"
 
 #define STREAM_BUFFER_SIZE 4*1024*1024
 
@@ -37,6 +38,10 @@ RenderThread::~RenderThread() {
 // static
 RenderThread* RenderThread::create(IOStream *stream, emugl::Mutex *lock) {
     return new RenderThread(stream, lock);
+}
+
+void RenderThread::forceStop() {
+    m_stream->forceStop();
 }
 
 intptr_t RenderThread::main() {
@@ -148,6 +153,10 @@ intptr_t RenderThread::main() {
     if (tInfo.currContext || tInfo.currDrawSurf || tInfo.currReadSurf) {
         fprintf(stderr, "ERROR: RenderThread exiting with current context/surfaces\n");
     }
+
+    FrameBuffer::getFB()->drainWindowSurface();
+
+    FrameBuffer::getFB()->drainRenderContext();
 
     return 0;
 }
