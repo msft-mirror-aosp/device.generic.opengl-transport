@@ -24,6 +24,8 @@
 #include "FrameBuffer.h"
 #include <set>
 
+#include <string.h>
+
 typedef std::set<RenderThread *> RenderThreadsSet;
 
 RenderServer::RenderServer() :
