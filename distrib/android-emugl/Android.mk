@@ -4,10 +4,10 @@
 # You must define BUILD_EMULATOR_HOST_OPENGL to 'true' in your environment to
 # build the following files.
 #
-ifeq (true,$(BUILD_EMULATOR_HOST_OPENGL))
-
 # Top-level for all modules
 EMUGL_PATH := $(call my-dir)
+
+EMUGL_OLD_LOCAL_PATH := $(LOCAL_PATH)
 
 # Directory containing common headers used by several modules
 # This is always set to a module's LOCAL_C_INCLUDES
@@ -17,18 +17,27 @@ EMUGL_COMMON_INCLUDES := \
     $(EMUGL_PATH)/host/include/libOpenglRender \
     $(EMUGL_PATH)/shared
 
-ifeq ($(BUILD_STANDALONE_EMULATOR),true)
 EMUGL_COMMON_INCLUDES := $(EMUGL_PATH)/host/libs/Translator/include
-endif
 
 # common cflags used by several modules
 # This is always set to a module's LOCAL_CFLAGS
 # See the definition of emugl-begin-module in common.mk
 
+# Needed to ensure SIZE_MAX is properly defined when including <stdint.h>
+EMUGL_COMMON_CFLAGS += -D__STDC_LIMIT_MACROS=1
+
 # Define EMUGL_BUILD_DEBUG=1 in your environment to build a
 # debug version of the EmuGL host binaries.
 ifneq (,$(strip $(EMUGL_BUILD_DEBUG)))
 EMUGL_COMMON_CFLAGS += -O0 -g -DEMUGL_DEBUG=1
+endif
+
+EMUGL_COMMON_CFLAGS += -DEMUGL_BUILD=1
+ifeq (linux,$(HOST_OS))
+EMUGL_COMMON_CFLAGS += -fvisibility=internal
+endif
+ifeq (darwin,$(HOST_OS))
+EMUGL_COMMON_CFLAGS += -fvisibility=hidden
 endif
 
 # Uncomment the following line if you want to enable debug traces
@@ -67,6 +76,16 @@ include $(EMUGL_PATH)/host/tools/emugen/Android.mk
 include $(EMUGL_PATH)/shared/emugl/common/Android.mk
 include $(EMUGL_PATH)/shared/OpenglCodecCommon/Android.mk
 
+ifeq (true,$(EMULATOR_USE_ANGLE))
+# Alternative graphics translation (GT) implementation, stripped off
+# and adjust from the equivalent mod in the ARC project.
+# This GT acts as a thin wrapper + GLESv1-to-v2 translator
+# and forwards GLES calls to underlying GLES API (e.g. ANGLE)
+#
+include $(EMUGL_PATH)/host/libs/graphics_translation/common/Android.mk
+include $(EMUGL_PATH)/host/libs/graphics_translation/gles/Android.mk
+endif
+
 # Host static libraries
 include $(EMUGL_PATH)/host/libs/GLESv1_dec/Android.mk
 include $(EMUGL_PATH)/host/libs/GLESv2_dec/Android.mk
@@ -79,4 +98,4 @@ include $(EMUGL_PATH)/host/libs/Translator/EGL/Android.mk
 # Host shared libraries
 include $(EMUGL_PATH)/host/libs/libOpenglRender/Android.mk
 
-endif # BUILD_EMULATOR_HOST_OPENGL == true
+LOCAL_PATH := $(EMUGL_OLD_LOCAL_PATH)
