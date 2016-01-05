@@ -1,5 +1,5 @@
 /*
-* Copyright (C) 2011 The Android Open Source Project
+* Copyright (C) 2011-2015 The Android Open Source Project
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -13,10 +13,11 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-#include "libOpenglRender/render_api.h"
+#include "render_api.h"
+
 #include "IOStream.h"
-#include "FrameBuffer.h"
 #include "RenderServer.h"
+#include "RenderWindow.h"
 #include "TimeUtils.h"
 
 #include "TcpStream.h"
@@ -26,17 +27,24 @@
 #include "UnixStream.h"
 #endif
 
+#include "DecoderContext.h"
 #include "EGLDispatch.h"
 #include "GLESv1Dispatch.h"
 #include "GLESv2Dispatch.h"
 
-static RenderServer *s_renderThread = NULL;
+#include <string.h>
+
+gles2_decoder_context_t s_gles2;
+gles1_decoder_context_t s_gles1;
+static RenderServer* s_renderThread = NULL;
 static char s_renderAddr[256];
+
+static RenderWindow* s_renderWindow = NULL;
 
 static IOStream *createRenderThread(int p_stream_buffer_size,
                                     unsigned int clientFlags);
 
-int initLibrary(void)
+RENDER_APICALL int RENDER_APIENTRY initLibrary(void)
 {
     //
     // Load EGL Plugin
@@ -50,14 +58,14 @@ int initLibrary(void)
     //
     // Load GLES Plugin
     //
-    if (!init_gles1_dispatch()) {
+    if (!init_gles1_dispatch(&s_gles1)) {
         // Failed to load GLES
         ERR("Failed to init_gles1_dispatch\n");
         return false;
     }
 
     /* failure to init the GLES2 dispatch table is not fatal */
-    if (!init_gles2_dispatch()) {
+    if (!init_gles2_dispatch(&s_gles2)) {
         ERR("Failed to init_gles2_dispatch\n");
         return false;
     }
@@ -65,9 +73,8 @@ int initLibrary(void)
     return true;
 }
 
-int initOpenGLRenderer(int width, int height, char* addr, size_t addrLen)
-{
-
+RENDER_APICALL int RENDER_APIENTRY initOpenGLRenderer(
+        int width, int height, bool useSubWindow, char* addr, size_t addrLen) {
     //
     // Fail if renderer is already initialized
     //
@@ -75,12 +82,40 @@ int initOpenGLRenderer(int width, int height, char* addr, size_t addrLen)
         return false;
     }
 
+    // kUseThread is used to determine whether the RenderWindow should use
+    // a separate thread to manage its subwindow GL/GLES context.
+    // Experience shows that:
+    //
+    // - It is necessary on Linux/XGL and OSX/Cocoa to avoid corruption
+    //   issues with the GL state of the main window, resulting in garbage
+    //   or black content of the non-framebuffer UI parts.
+    //
+    // - It must be disabled on Windows, otherwise the main window becomes
+    //   unresponsive after a few seconds of user interaction (e.g. trying to
+    //   move it over the desktop). Probably due to the subtle issues around
+    //   input on this platform (input-queue is global, message-queue is
+    //   per-thread). Also, this messes considerably the display of the
+    //   main window when running the executable under Wine.
+    //
+#ifdef _WIN32
+    bool kUseThread = false;
+#else
+    bool kUseThread = true;
+#endif
+
     //
     // initialize the renderer and listen to connections
     // on a thread in the current process.
     //
-    bool inited = FrameBuffer::initialize(width, height);
-    if (!inited) {
+    s_renderWindow = new RenderWindow(width, height, kUseThread, useSubWindow);
+    if (!s_renderWindow) {
+        ERR("Could not create rendering window class");
+        return false;
+    }
+    if (!s_renderWindow->isValid()) {
+        ERR("Could not initialize emulated framebuffer");
+        delete s_renderWindow;
+        s_renderWindow = NULL;
         return false;
     }
 
@@ -95,25 +130,27 @@ int initOpenGLRenderer(int width, int height, char* addr, size_t addrLen)
     return true;
 }
 
-void setPostCallback(OnPostFn onPost, void* onPostContext)
-{
-    FrameBuffer* fb = FrameBuffer::getFB();
-    if (fb) {
-        fb->setPostCallback(onPost, onPostContext);
-    }
-}
-
-void getHardwareStrings(const char** vendor, const char** renderer, const char** version)
-{
-    FrameBuffer* fb = FrameBuffer::getFB();
-    if (fb) {
-        fb->getGLStrings(vendor, renderer, version);
+RENDER_APICALL void RENDER_APIENTRY setPostCallback(
+        OnPostFn onPost, void* onPostContext) {
+    if (s_renderWindow) {
+        s_renderWindow->setPostCallback(onPost, onPostContext);
     } else {
-        *vendor = *renderer = *version = NULL;
+        ERR("Calling setPostCallback() before creating render window!");
     }
 }
 
-int stopOpenGLRenderer(void)
+RENDER_APICALL void RENDER_APIENTRY getHardwareStrings(
+        const char** vendor,
+        const char** renderer,
+        const char** version) {
+    if (s_renderWindow &&
+        s_renderWindow->getHardwareStrings(vendor, renderer, version)) {
+        return;
+    }
+    *vendor = *renderer = *version = NULL;
+}
+
+RENDER_APICALL int RENDER_APIENTRY stopOpenGLRenderer(void)
 {
     bool ret = false;
 
@@ -124,7 +161,6 @@ int stopOpenGLRenderer(void)
     if (!dummy) return false;
 
     if (s_renderThread) {
-
         // wait for the thread to exit
         ret = s_renderThread->wait(NULL);
 
@@ -132,72 +168,94 @@ int stopOpenGLRenderer(void)
         s_renderThread = NULL;
     }
 
+    if (s_renderWindow != NULL) {
+        delete s_renderWindow;
+        s_renderWindow = NULL;
+    }
+
+    delete dummy;
+
     return ret;
 }
 
-int createOpenGLSubwindow(FBNativeWindowType window,
-                           int x, int y, int width, int height, float zRot)
+RENDER_APICALL bool RENDER_APIENTRY showOpenGLSubwindow(
+        FBNativeWindowType window_id,
+        int wx,
+        int wy,
+        int ww,
+        int wh,
+        int fbw,
+        int fbh,
+        float dpr,
+        float zRot)
 {
-    if (s_renderThread) {
-        return FrameBuffer::setupSubWindow(window,x,y,width,height, zRot);
+    RenderWindow* window = s_renderWindow;
+
+    if (window) {
+       return window->setupSubWindow(window_id,wx,wy,ww,wh,fbw,fbh,dpr,zRot);
     }
-    else {
-        //
-        // XXX: should be implemented by sending the renderer process
-        //      a request
-        ERR("%s not implemented for separate renderer process !!!\n",
-            __FUNCTION__);
-    }
+    // XXX: should be implemented by sending the renderer process
+    //      a request
+    ERR("%s not implemented for separate renderer process !!!\n",
+        __FUNCTION__);
     return false;
 }
 
-int destroyOpenGLSubwindow(void)
+RENDER_APICALL bool RENDER_APIENTRY destroyOpenGLSubwindow(void)
 {
-    if (s_renderThread) {
-        return FrameBuffer::removeSubWindow();
+    RenderWindow* window = s_renderWindow;
+
+    if (window) {
+        return window->removeSubWindow();
     }
-    else {
-        //
-        // XXX: should be implemented by sending the renderer process
-        //      a request
-        ERR("%s not implemented for separate renderer process !!!\n",
-                __FUNCTION__);
-        return false;
-    }
+
+    // XXX: should be implemented by sending the renderer process
+    //      a request
+    ERR("%s not implemented for separate renderer process !!!\n",
+            __FUNCTION__);
+    return false;
 }
 
-void setOpenGLDisplayRotation(float zRot)
+RENDER_APICALL void RENDER_APIENTRY setOpenGLDisplayRotation(float zRot)
 {
-    if (s_renderThread) {
-        FrameBuffer *fb = FrameBuffer::getFB();
-        if (fb) {
-            fb->setDisplayRotation(zRot);
-        }
+    RenderWindow* window = s_renderWindow;
+
+    if (window) {
+        window->setRotation(zRot);
+        return;
     }
-    else {
-        //
-        // XXX: should be implemented by sending the renderer process
-        //      a request
-        ERR("%s not implemented for separate renderer process !!!\n",
-                __FUNCTION__);
-    }
+    // XXX: should be implemented by sending the renderer process
+    //      a request
+    ERR("%s not implemented for separate renderer process !!!\n",
+            __FUNCTION__);
 }
 
-void repaintOpenGLDisplay(void)
+RENDER_APICALL void RENDER_APIENTRY setOpenGLDisplayTranslation(float px, float py)
 {
-    if (s_renderThread) {
-        FrameBuffer *fb = FrameBuffer::getFB();
-        if (fb) {
-            fb->repost();
-        }
+    RenderWindow* window = s_renderWindow;
+
+    if (window) {
+        window->setTranslation(px, py);
+        return;
     }
-    else {
-        //
-        // XXX: should be implemented by sending the renderer process
-        //      a request
-        ERR("%s not implemented for separate renderer process !!!\n",
-                __FUNCTION__);
+    // XXX: should be implemented by sending the renderer process
+    //      a request
+    ERR("%s not implemented for separate renderer process !!!\n",
+            __FUNCTION__);
+}
+
+RENDER_APICALL void RENDER_APIENTRY repaintOpenGLDisplay(void)
+{
+    RenderWindow* window = s_renderWindow;
+
+    if (window) {
+        window->repaint();
+        return;
     }
+    // XXX: should be implemented by sending the renderer process
+    //      a request
+    ERR("%s not implemented for separate renderer process !!!\n",
+            __FUNCTION__);
 }
 
 
@@ -243,8 +301,7 @@ IOStream *createRenderThread(int p_stream_buffer_size, unsigned int clientFlags)
     return stream;
 }
 
-int
-setStreamMode(int mode)
+RENDER_APICALL int RENDER_APIENTRY setStreamMode(int mode)
 {
     switch (mode) {
         case STREAM_MODE_DEFAULT:
