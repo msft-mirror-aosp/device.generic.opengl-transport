@@ -19,6 +19,7 @@
 #include <GLcommon/GLESmacros.h>
 #include <GLES/gl.h>
 #include <GLES/glext.h>
+#include <OpenglCodecCommon/ErrorLog.h>
 #include <GLcommon/GLESvalidate.h>
 #include <GLcommon/TextureUtils.h>
 #include <GLcommon/FramebufferData.h>
@@ -131,10 +132,62 @@ bool Version::operator<(const Version& ver) const{
     return false;
 }
 
-void GLEScontext::init() {
+static std::string getHostExtensionsString(GLDispatch* dispatch) {
+    // glGetString(GL_EXTENSIONS) is deprecated in GL 3.0, one has to use
+    // glGetStringi(GL_EXTENSIONS, index) instead to get individual extension
+    // names. Recent desktop drivers implement glGetStringi() but have a
+    // version of glGetString() that returns NULL, so deal with this by
+    // doing the following:
+    //
+    //  - If glGetStringi() is available, use it to build the extensions
+    //    string, using simple spaces to separate the names.
+    //
+    //  - Otherwise, fallback to getGetString(). If it returns NULL, return
+    //    an empty string.
+    //
+    std::string result;
+    if (dispatch->glGetStringi != nullptr) {
+        int count = 0;
+        dispatch->glGetIntegerv(GL_NUM_EXTENSIONS, &count);
+        for (int n = 0; n < count; n++) {
+            const char* ext = reinterpret_cast<const char*>(
+                    dispatch->glGetStringi(GL_EXTENSIONS, n));
+            if (ext != NULL) {
+                if (!result.empty()) {
+                    result += " ";
+                }
+                result += ext;
+            }
+        }
+    } else {
+        const char* extensions = reinterpret_cast<const char*>(
+                dispatch->glGetString(GL_EXTENSIONS));
+        if (extensions) {
+            result = extensions;
+        }
+    }
+    // For the sake of initCapsLocked() add a starting and trailing space.
+    if (!result.empty()) {
+        if (result[0] != ' ') {
+            result.insert(0, 1, ' ');
+        }
+        if (result[result.size() - 1U] != ' ') {
+            result += ' ';
+        }
+    }
+    return result;
+}
+
+void GLEScontext::init(GlLibrary* glLib) {
 
     if (!s_glExtensions) {
-        initCapsLocked(s_glDispatch.glGetString(GL_EXTENSIONS));
+        initCapsLocked(reinterpret_cast<const GLubyte*>(
+                getHostExtensionsString(&s_glDispatch).c_str()));
+        // NOTE: the string below corresponds to the extensions reported
+        // by this context, which is initialized in each GLESv1 or GLESv2
+        // context implementation, based on the parsing of the host
+        // extensions string performed by initCapsLocked(). I.e. it will
+        // be populated after calling this ::init() method.
         s_glExtensions = new std::string("");
     }
 
@@ -514,8 +567,10 @@ void GLEScontext::initCapsLocked(const GLubyte * extensionString)
     s_glDispatch.glGetIntegerv(GL_MAX_TEXTURE_SIZE,&s_glSupport.maxTexSize);
     s_glDispatch.glGetIntegerv(GL_MAX_TEXTURE_UNITS,&s_glSupport.maxTexUnits);
     s_glDispatch.glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS,&s_glSupport.maxTexImageUnits);
+    s_glDispatch.glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &s_glSupport.maxCombinedTexImageUnits);
     const GLubyte* glslVersion = s_glDispatch.glGetString(GL_SHADING_LANGUAGE_VERSION);
     s_glSupport.glslVersion = Version((const  char*)(glslVersion));
+    const GLubyte* glVersion = s_glDispatch.glGetString(GL_VERSION);
 
     if (strstr(cstring,"GL_EXT_bgra ")!=NULL)
         s_glSupport.GL_EXT_TEXTURE_FORMAT_BGRA8888 = true;
@@ -553,6 +608,18 @@ void GLEScontext::initCapsLocked(const GLubyte * extensionString)
     if (strstr(cstring,"GL_OES_standard_derivatives ")!=NULL)
         s_glSupport.GL_OES_STANDARD_DERIVATIVES = true;
 
+    if (strstr(cstring,"GL_ARB_texture_non_power_of_two")!=NULL)
+        s_glSupport.GL_OES_TEXTURE_NPOT = true;
+
+    if (!(Version((const char*)glVersion) < Version("3.0")) || strstr(cstring,"GL_OES_rgb8_rgba8")!=NULL)
+        s_glSupport.GL_OES_RGB8_RGBA8 = true;
+
+    // Check for anisotropic filtering support.
+    // We should be able to count on this being in most desktop OpenGL implementations,
+    // but display a message if it is in fact not supported (e.g., Mesa)
+    if (strstr(cstring,"GL_EXT_texture_filter_anisotropic") == NULL) {
+        ERR("OpenGL warning: Anisotropic filtering not supported in underlying system OpenGL\n");
+    }
 }
 
 void GLEScontext::buildStrings(const char* baseVendor,
@@ -562,6 +629,22 @@ void GLEScontext::buildStrings(const char* baseVendor,
     static const char RENDERER[] = {"Android Emulator OpenGL ES Translator ("};
     const size_t VENDOR_LEN   = sizeof(VENDOR) - 1;
     const size_t RENDERER_LEN = sizeof(RENDERER) - 1;
+
+    // Sanitize the strings as some OpenGL implementations return NULL
+    // when asked the basic questions (this happened at least once on a client
+    // machine)
+    if (!baseVendor) {
+        baseVendor = "N/A";
+    }
+    if (!baseRenderer) {
+        baseRenderer = "N/A";
+    }
+    if (!baseVersion) {
+        baseVersion = "N/A";
+    }
+    if (!version) {
+        version = "N/A";
+    }
 
     size_t baseVendorLen = strlen(baseVendor);
     s_glVendor.clear();
