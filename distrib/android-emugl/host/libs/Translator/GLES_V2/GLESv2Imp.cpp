@@ -21,11 +21,12 @@
 #endif
 
 #define GL_GLEXT_PROTOTYPES
-#include <stdio.h>
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
+
+#include <OpenglCodecCommon/ErrorLog.h>
 #include <GLcommon/TranslatorIfaces.h>
-#include <GLcommon/gldefs.h>
+#include <OpenGLESDispatch/gldefs.h>
 #include "GLESv2Context.h"
 #include "GLESv2Validate.h"
 #include "ShaderParser.h"
@@ -33,9 +34,12 @@
 #include <GLcommon/TextureUtils.h>
 #include <GLcommon/FramebufferData.h>
 
+#include <stdio.h>
+
 extern "C" {
 
 //decleration
+static void initGLESx();
 static void initContext(GLEScontext* ctx,ShareGroupPtr grp);
 static void deleteGLESContext(GLEScontext* ctx);
 static void setShareGroup(GLEScontext* ctx,ShareGroupPtr grp);
@@ -52,23 +56,29 @@ ProcTableMap *s_glesExtensions = NULL;
 
 static EGLiface*  s_eglIface = NULL;
 static GLESiface  s_glesIface = {
-    createGLESContext:createGLESContext,
-    initContext      :initContext,
-    deleteGLESContext:deleteGLESContext,
-    flush            :(FUNCPTR)glFlush,
-    finish           :(FUNCPTR)glFinish,
-    setShareGroup    :setShareGroup,
-    getProcAddress   :getProcAddress
+    .initGLESx         = initGLESx,
+    .createGLESContext = createGLESContext,
+    .initContext       = initContext,
+    .deleteGLESContext = deleteGLESContext,
+    .flush             = (FUNCPTR)glFlush,
+    .finish            = (FUNCPTR)glFinish,
+    .setShareGroup     = setShareGroup,
+    .getProcAddress    = getProcAddress
 };
 
 #include <GLcommon/GLESmacros.h>
 
 extern "C" {
 
+static void initGLESx() {
+    DBG("No special initialization necessary for GLES_V2\n");
+    return;
+}
+
 static void initContext(GLEScontext* ctx,ShareGroupPtr grp) {
     if (!ctx->isInitialized()) {
         ctx->setShareGroup(grp);
-        ctx->init();
+        ctx->init(s_eglIface->eglGetGlLibrary());
         glBindTexture(GL_TEXTURE_2D,0);
         glBindTexture(GL_TEXTURE_CUBE_MAP,0);
     }
@@ -109,12 +119,14 @@ static __translatorMustCastToProperFunctionPointerType getProcAddress(const char
     return ret;
 }
 
-GL_APICALL GLESiface* __translator_getIfaces(EGLiface* eglIface){
+GL_APICALL GLESiface* GL_APIENTRY __translator_getIfaces(EGLiface* eglIface);
+
+GLESiface* __translator_getIfaces(EGLiface* eglIface) {
     s_eglIface = eglIface;
     return & s_glesIface;
 }
 
-}
+}  // extern "C"
 
 static void s_attachShader(GLEScontext* ctx, GLuint program, GLuint shader) {
     if (ctx && program && shader && ctx->shareGroup().Ptr()) {
@@ -163,7 +175,7 @@ static TextureData* getTextureTargetData(GLenum target){
 
 GL_APICALL void  GL_APIENTRY glActiveTexture(GLenum texture){
     GET_CTX_V2();
-    SET_ERROR_IF (!GLESv2Validate::textureEnum(texture,ctx->getMaxTexUnits()),GL_INVALID_ENUM);
+    SET_ERROR_IF (!GLESv2Validate::textureEnum(texture,ctx->getMaxCombinedTexUnits()),GL_INVALID_ENUM);
     ctx->setActiveTexture(texture);
     ctx->dispatcher().glActiveTexture(texture);
 }
@@ -409,6 +421,7 @@ GL_APICALL void  GL_APIENTRY glCompressedTexSubImage2D(GLenum target, GLint leve
 GL_APICALL void  GL_APIENTRY glCopyTexImage2D(GLenum target, GLint level, GLenum internalformat, GLint x, GLint y, GLsizei width, GLsizei height, GLint border){
     GET_CTX();
     SET_ERROR_IF(!(GLESv2Validate::pixelFrmt(ctx,internalformat) && GLESv2Validate::textureTargetEx(target)),GL_INVALID_ENUM);
+    SET_ERROR_IF((GLESv2Validate::textureIsCubeMap(target) && width != height), GL_INVALID_VALUE);
     SET_ERROR_IF(border != 0,GL_INVALID_VALUE);
     ctx->dispatcher().glCopyTexImage2D(target,level,internalformat,x,y,width,height,border);
 }
@@ -811,7 +824,7 @@ GL_APICALL void  GL_APIENTRY glGenBuffers(GLsizei n, GLuint* buffers){
 
 GL_APICALL void  GL_APIENTRY glGenerateMipmap(GLenum target){
     GET_CTX();
-    SET_ERROR_IF(!GLESv2Validate::textureTargetEx(target),GL_INVALID_ENUM);
+    SET_ERROR_IF(!GLESvalidate::textureTarget(target), GL_INVALID_ENUM);
     ctx->dispatcher().glGenerateMipmapEXT(target);
 }
 
@@ -1742,12 +1755,26 @@ GL_APICALL void  GL_APIENTRY glReadPixels(GLint x, GLint y, GLsizei width, GLsiz
 
 
 GL_APICALL void  GL_APIENTRY glReleaseShaderCompiler(void){
+// this function doesn't work on Mac OS with MacOSX10.9sdk
+#ifndef __APPLE__
+
+    /* Use this function with mesa will cause potential bug. Specifically,
+     * calling this function between glCompileShader() and glLinkProgram() will
+     * release resources that would be potentially used by glLinkProgram,
+     * resulting in a segmentation fault.
+     */
+    const char* env = ::getenv("ANDROID_GL_LIB");
+    if (env && !strcmp(env, "mesa")) {
+        return;
+    }
+
     GET_CTX();
 
     if(ctx->dispatcher().glReleaseShaderCompiler != NULL)
     {
         ctx->dispatcher().glReleaseShaderCompiler();
     }
+#endif // !__APPLE__
 }
 
 GL_APICALL void  GL_APIENTRY glRenderbufferStorage(GLenum target, GLenum internalformat, GLsizei width, GLsizei height){
@@ -1863,6 +1890,8 @@ GL_APICALL void  GL_APIENTRY glStencilOpSeparate(GLenum face, GLenum fail, GLenu
     ctx->dispatcher().glStencilOp(fail,zfail,zpass);
 }
 
+#define GL_RGBA32F                        0x8814
+#define GL_RGB32F                         0x8815
 GL_APICALL void  GL_APIENTRY glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const GLvoid* pixels){
     GET_CTX();
     SET_ERROR_IF(!(GLESv2Validate::textureTargetEx(target) &&
@@ -1870,6 +1899,7 @@ GL_APICALL void  GL_APIENTRY glTexImage2D(GLenum target, GLint level, GLint inte
                    GLESv2Validate::pixelType(ctx,type)),GL_INVALID_ENUM);
 
     SET_ERROR_IF(!GLESv2Validate::pixelFrmt(ctx,internalformat), GL_INVALID_VALUE);
+    SET_ERROR_IF((GLESv2Validate::textureIsCubeMap(target) && width != height), GL_INVALID_VALUE);
     SET_ERROR_IF((format == GL_DEPTH_COMPONENT || internalformat == GL_DEPTH_COMPONENT) &&
                     (type != GL_UNSIGNED_SHORT && type != GL_UNSIGNED_INT), GL_INVALID_OPERATION);
 
@@ -1913,6 +1943,8 @@ GL_APICALL void  GL_APIENTRY glTexImage2D(GLenum target, GLint level, GLint inte
         type = GL_HALF_FLOAT_NV;
     if (pixels==NULL && type==GL_UNSIGNED_SHORT_5_5_5_1)
         type = GL_UNSIGNED_SHORT;
+    if (type == GL_FLOAT)
+        internalformat = (format == GL_RGBA) ? GL_RGBA32F : GL_RGB32F;
     ctx->dispatcher().glTexImage2D(target,level,internalformat,width,height,border,format,type,pixels);
 }
 
