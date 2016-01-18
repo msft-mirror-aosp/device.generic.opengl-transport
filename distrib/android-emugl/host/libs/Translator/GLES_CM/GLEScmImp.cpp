@@ -25,16 +25,15 @@
 #include "GLEScmUtils.h"
 #include <GLcommon/TextureUtils.h>
 
-#include <stdio.h>
-#include <GLcommon/gldefs.h>
 #include <GLcommon/GLDispatch.h>
 #include <GLcommon/GLconversion_macros.h>
 #include <GLcommon/TranslatorIfaces.h>
 #include <GLcommon/FramebufferData.h>
-#include <GLES/gl.h>
-#include <GLES/glext.h>
+
 #include <cmath>
 #include <map>
+
+#include <stdio.h>
 
 extern "C" {
 
