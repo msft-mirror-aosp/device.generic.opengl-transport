@@ -13,7 +13,7 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-#include "render_api.h"
+#include "OpenglRender/render_api.h"
 
 #include "IOStream.h"
 #include "RenderServer.h"
@@ -78,8 +78,9 @@ RENDER_APICALL int RENDER_APIENTRY initLibrary(void)
 
 RENDER_APICALL int RENDER_APIENTRY initOpenGLRenderer(
         int width, int height, bool useSubWindow, char* addr, size_t addrLen,
-        void (*logger)(const char* fmt, ...)) {
-    set_emugl_logger(logger);
+        emugl_logger_struct logfuncs) {
+    set_emugl_logger(logfuncs.coarse);
+    set_emugl_cxt_logger(logfuncs.fine);
     //
     // Fail if renderer is already initialized
     //
@@ -89,24 +90,25 @@ RENDER_APICALL int RENDER_APIENTRY initOpenGLRenderer(
 
     // kUseThread is used to determine whether the RenderWindow should use
     // a separate thread to manage its subwindow GL/GLES context.
-    // Experience shows that:
+    // For now, this feature is disabled entirely for the following
+    // reasons:
     //
-    // - It is necessary on Linux/XGL and OSX/Cocoa to avoid corruption
-    //   issues with the GL state of the main window, resulting in garbage
-    //   or black content of the non-framebuffer UI parts.
-    //
-    // - It must be disabled on Windows, otherwise the main window becomes
+    // - It must be disabled on Windows at all times, otherwise the main window becomes
     //   unresponsive after a few seconds of user interaction (e.g. trying to
     //   move it over the desktop). Probably due to the subtle issues around
     //   input on this platform (input-queue is global, message-queue is
     //   per-thread). Also, this messes considerably the display of the
     //   main window when running the executable under Wine.
     //
-#ifdef _WIN32
+    // - On Linux/XGL and OSX/Cocoa, this used to be necessary to avoid corruption
+    //   issues with the GL state of the main window when using the SDL UI.
+    //   After the switch to Qt, this is no longer necessary and may actually cause
+    //   undesired interactions between the UI thread and the RenderWindow thread:
+    //   for example, in a multi-monitor setup the context might be recreated when
+    //   dragging the window between monitors, triggering a Qt-specific callback
+    //   in the context of RenderWindow thread, which will become blocked on the UI
+    //   thread, which may in turn be blocked on something else.
     bool kUseThread = false;
-#else
-    bool kUseThread = true;
-#endif
 
     //
     // initialize the renderer and listen to connections
@@ -269,7 +271,7 @@ RENDER_APICALL void RENDER_APIENTRY repaintOpenGLDisplay(void)
 /* NOTE: For now, always use TCP mode by default, until the emulator
  *        has been updated to support Unix and Win32 pipes
  */
-#define  DEFAULT_STREAM_MODE  STREAM_MODE_TCP
+#define  DEFAULT_STREAM_MODE  RENDER_API_STREAM_MODE_TCP
 
 int gRendererStreamMode = DEFAULT_STREAM_MODE;
 
@@ -277,7 +279,7 @@ IOStream *createRenderThread(int p_stream_buffer_size, unsigned int clientFlags)
 {
     SocketStream*  stream = NULL;
 
-    if (gRendererStreamMode == STREAM_MODE_TCP) {
+    if (gRendererStreamMode == RENDER_API_STREAM_MODE_TCP) {
         stream = new TcpStream(p_stream_buffer_size);
     } else {
 #ifdef _WIN32
@@ -311,18 +313,18 @@ IOStream *createRenderThread(int p_stream_buffer_size, unsigned int clientFlags)
 RENDER_APICALL int RENDER_APIENTRY setStreamMode(int mode)
 {
     switch (mode) {
-        case STREAM_MODE_DEFAULT:
+        case RENDER_API_STREAM_MODE_DEFAULT:
             mode = DEFAULT_STREAM_MODE;
             break;
 
-        case STREAM_MODE_TCP:
+        case RENDER_API_STREAM_MODE_TCP:
             break;
 
 #ifndef _WIN32
-        case STREAM_MODE_UNIX:
+        case RENDER_API_STREAM_MODE_UNIX:
             break;
 #else /* _WIN32 */
-        case STREAM_MODE_PIPE:
+        case RENDER_API_STREAM_MODE_PIPE:
             break;
 #endif /* _WIN32 */
         default:
