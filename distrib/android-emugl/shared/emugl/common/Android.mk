@@ -6,6 +6,7 @@ LOCAL_PATH := $(call my-dir)
 ### emugl_common host library ###########################################
 
 commonSources := \
+        crash_reporter.cpp \
         id_to_object_map.cpp \
         lazy_instance.cpp \
         logging.cpp \
@@ -13,6 +14,7 @@ commonSources := \
         pod_vector.cpp \
         shared_library.cpp \
         smart_ptr.cpp \
+        stringparsing.cpp \
         sockets.cpp \
         thread_store.cpp \
 
@@ -20,7 +22,7 @@ host_commonSources := $(commonSources)
 
 host_commonLdLibs := $(CXX_STD_LIB)
 
-ifneq (windows,$(HOST_OS))
+ifneq (windows,$(BUILD_TARGET_OS))
     host_commonSources += \
         thread_pthread.cpp \
 
@@ -32,7 +34,7 @@ else
 
 endif
 
-$(call emugl-begin-host-static-library,libemugl_common)
+$(call emugl-begin-static-library,libemugl_common)
 LOCAL_SRC_FILES := $(host_commonSources)
 $(call emugl-export,C_INCLUDES,$(EMUGL_PATH)/shared)
 $(call emugl-export,LDLIBS,$(host_commonLdLibs))
@@ -52,13 +54,14 @@ host_commonSources := \
     thread_store_unittest.cpp \
     thread_unittest.cpp \
     unique_integer_map_unittest.cpp \
+    stringparsing_unittest.cpp
 
-$(call emugl-begin-host-executable,emugl$(HOST_SUFFIX)_common_host_unittests)
+$(call emugl-begin-executable,emugl$(BUILD_TARGET_SUFFIX)_common_host_unittests)
 LOCAL_SRC_FILES := $(host_commonSources)
 $(call emugl-import,libemugl_common libemugl_gtest)
 $(call emugl-end-module)
 
-$(call emugl-begin-host-shared-library,lib$(HOST_SUFFIX)emugl_test_shared_library)
+$(call emugl-begin-shared-library,lib$(BUILD_TARGET_SUFFIX)emugl_test_shared_library)
 LOCAL_SRC_FILES := testing/test_shared_library.cpp
 LOCAL_CFLAGS := -fvisibility=default
 $(call emugl-end-module)
