@@ -87,7 +87,7 @@ void WindowSurface::bind(RenderContextPtr p_ctx, BindType p_bindType) {
 }
 
 bool WindowSurface::flushColorBuffer() {
-    if (!mAttachedColorBuffer.Ptr()) {
+    if (!mAttachedColorBuffer.get()) {
         return true;
     }
     if (!mWidth || !mHeight) {
@@ -101,7 +101,7 @@ bool WindowSurface::flushColorBuffer() {
         return false;
     }
 
-    if (!mDrawContext.Ptr()) {
+    if (!mDrawContext.get()) {
         fprintf(stderr, "Draw context is NULL\n");
         return false;
     }

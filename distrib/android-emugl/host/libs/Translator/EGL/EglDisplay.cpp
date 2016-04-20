@@ -204,7 +204,7 @@ bool EglDisplay::removeContext(ContextPtr ctx) {
 
     ContextsHndlMap::iterator it;
     for(it = m_contexts.begin(); it != m_contexts.end();it++) {
-        if((*it).second.Ptr() == ctx.Ptr()){
+        if((*it).second.get() == ctx.get()){
             break;
         }
     }
@@ -258,7 +258,7 @@ int EglDisplay::doChooseConfigs(const EglConfig& dummy,EGLConfig* configs,int co
 
 EGLSurface EglDisplay::addSurface(SurfacePtr s ) {
    emugl::Mutex::AutoLock mutex(m_lock);
-   unsigned int hndl = s.Ptr()->getHndl();
+   unsigned int hndl = s.get()->getHndl();
    EGLSurface ret =reinterpret_cast<EGLSurface> (hndl);
 
    if(m_surfaces.find(hndl) != m_surfaces.end()) {
@@ -272,7 +272,7 @@ EGLSurface EglDisplay::addSurface(SurfacePtr s ) {
 EGLContext EglDisplay::addContext(ContextPtr ctx ) {
     emugl::Mutex::AutoLock mutex(m_lock);
 
-   unsigned int hndl = ctx.Ptr()->getHndl();
+   unsigned int hndl = ctx.get()->getHndl();
    EGLContext ret    = reinterpret_cast<EGLContext> (hndl);
 
    if(m_contexts.find(hndl) != m_contexts.end()) {
