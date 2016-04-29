@@ -16,6 +16,8 @@
 #ifndef TRANSLATOR_IFACES_H
 #define TRANSLATOR_IFACES_H
 #include <GLES/gl.h>
+#include <GLES2/gl2.h>
+#include <GLES3/gl3.h>
 #include <string.h>
 #include "objectNameManager.h"
 
@@ -87,6 +89,8 @@ typedef struct {
     void                                            (*finish)();
     void                                            (*setShareGroup)(GLEScontext*,ShareGroupPtr);
     __translatorMustCastToProperFunctionPointerType (*getProcAddress)(const char*);
+    GLsync                                          (*fenceSync)(GLenum, GLbitfield);
+    GLenum                                          (*clientWaitSync)(GLsync, GLbitfield, GLuint64);
 }GLESiface;
 
 
