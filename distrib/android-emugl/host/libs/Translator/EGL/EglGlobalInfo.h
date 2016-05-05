@@ -19,47 +19,93 @@
 #include "EglDisplay.h"
 #include "EglConfig.h"
 #include "EglContext.h"
+#include "EglOsApi.h"
+
+#include "emugl/common/lazy_instance.h"
+#include "emugl/common/mutex.h"
 
 #include <GLcommon/TranslatorIfaces.h>
-#include "emugl/common/mutex.h"
-#include <list>
+
 #include <EGL/egl.h>
 
-typedef std::map<EglDisplay*,EGLNativeDisplayType>DisplaysMap;
+#include <vector>
 
+class EglDisplay;
+
+// Holds all global information shared by the EGL implementation in a given
+// process. This really amounts to:
+//
+//   - A list of EglDisplay instances, each identified by an
+//     EGLNativeDisplayType and EglOS::Display*.
+//
+//   - GLES interface function pointers for all supported GLES versions.
 
 class EglGlobalInfo {
 
 public:
-    EglDisplay* addDisplay(EGLNativeDisplayType dpy,EGLNativeInternalDisplayType idpy);
-    EglDisplay* getDisplay(EGLNativeDisplayType dpy);
-    EglDisplay* getDisplay(EGLDisplay dpy);
-    bool removeDisplay(EGLDisplay dpy);
-    EGLNativeInternalDisplayType getDefaultNativeDisplay(){ return m_default;};
-    EGLNativeInternalDisplayType generateInternalDisplay(EGLNativeDisplayType dpy);
-
-    void setIface(GLESiface* iface,GLESVersion ver) { m_gles_ifaces[ver] = iface;};
-    GLESiface* getIface(GLESVersion ver){ return m_gles_ifaces[ver];}
-
-    int  nDisplays() const { return m_displays.size();};
-
-    void initClientExtFuncTable(GLESVersion ver);
-
+    // Returns a pointer to the process' single instance, which will be
+    // created on demand. This can be called multiple times, each call will
+    // increment an internal reference-count.
     static EglGlobalInfo* getInstance();
-    static void delInstance();
+
+    // Create a new EglDisplay instance from an existing native |dpy| value.
+    // |idpy| is the corresponding native internal display type. See
+    // generateInternalDisplay() below to understand how they differ.
+    EglDisplay* addDisplay(EGLNativeDisplayType dpy,
+                           EglOS::Display* idpy);
+
+    // Return the EglDisplay instance corresponding to a given native |dpy|
+    // value.
+    EglDisplay* getDisplay(EGLNativeDisplayType dpy) const;
+
+    // Return the EglDisplay instance corresponding to a given EGLDisplay |dpy|
+    // value. NULL if none matches.
+    EglDisplay* getDisplay(EGLDisplay dpy) const;
+
+    // Remove a given EGLDisplay identified by |dpy|.
+    bool removeDisplay(EGLDisplay dpy);
+
+    // Return the default native internal display handle.
+    EglOS::Display* getDefaultNativeDisplay() const {
+        return m_display;
+    };
+
+    // Return the default engine handle.
+    EglOS::Engine* getOsEngine() const {
+        return m_engine;
+    }
+
+    // Set the GLES interface pointer corresponding to a given GLES version.
+    // |iface| is a pointer to a structure containing function pointers
+    // related to a specific GLES version.
+    // |ver| is a version identifier, e.g. GLES_1_1 or GLES_2_0.
+    void setIface(const GLESiface* iface, GLESVersion ver) {
+        m_gles_ifaces[ver] = iface;
+    };
+
+    // Return the current GLES interface pointer for a given GLES version.
+    // |ver| is a version identifier, e.g. GLES_1_1 or GLES_2_0.
+    const GLESiface* getIface(GLESVersion ver) const {
+        return m_gles_ifaces[ver];
+    }
+
+    // Initialize the table of extension functions for a given GLES version
+    // |ver|. This must be called after setIface() for the corresponding
+    // version.
+    void initClientExtFuncTable(GLESVersion ver);
 
 private:
     EglGlobalInfo();
-    ~EglGlobalInfo(){};
+    ~EglGlobalInfo();
 
-    static EglGlobalInfo*          m_singleton;
-    static int                     m_refCount;
+    friend emugl::LazyInstance<EglGlobalInfo>;
 
-    DisplaysMap                    m_displays;
-    EGLNativeInternalDisplayType   m_default;
-    GLESiface*                     m_gles_ifaces[MAX_GLES_VERSION];
-    bool                           m_gles_extFuncs_inited[MAX_GLES_VERSION];
-    emugl::Mutex                   m_lock;
+    std::vector<EglDisplay*>       m_displays;
+    EglOS::Engine*                 m_engine = nullptr;
+    EglOS::Display*                m_display = nullptr;
+    const GLESiface*               m_gles_ifaces[MAX_GLES_VERSION] = {};
+    bool                           m_gles_extFuncs_inited[MAX_GLES_VERSION] = {};
+    mutable emugl::Mutex           m_lock;
 };
 
 #endif

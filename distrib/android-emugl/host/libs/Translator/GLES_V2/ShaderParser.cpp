@@ -15,39 +15,33 @@
 */
 
 #include "ShaderParser.h"
+#include "ShaderValidator.h"
 #include <stdlib.h>
 #include <string.h>
 
-ShaderParser::ShaderParser():ObjectData(SHADER_DATA),
-                             m_type(0),
-                             m_originalSrc(NULL),
-                             m_parsedLines(NULL),
-                             m_deleteStatus(false),
-                             m_program(0) {
-    m_infoLog = new GLchar[1];
-    m_infoLog[0] = '\0';
-};
+#include <memory>
+#include <string>
+#include <vector>
 
-ShaderParser::ShaderParser(GLenum type):ObjectData(SHADER_DATA), 
-                                        m_type(type),
-                                        m_originalSrc(NULL),
-                                        m_parsedLines(NULL),
-                                        m_deleteStatus(false),
-                                        m_program(0) {
+ShaderParser::ShaderParser(GLenum type):ObjectData(SHADER_DATA), m_type(type) {}
 
-    m_infoLog = new GLchar[1];
-    m_infoLog[0] = '\0';
-};
+void ShaderParser::validateGLESKeywords(const char* src) {
+    m_valid = validate_glsles_keywords(src);
+}
 
 void ShaderParser::setSrc(const Version& ver,GLsizei count,const GLchar* const* strings,const GLint* length){
     m_src.clear();
     for(int i = 0;i<count;i++){
-        m_src.append(strings[i]);
+        const size_t strLen =
+                (length && length[i] >= 0) ? length[i] : strlen(strings[i]);
+        m_src.append(strings[i], strings[i] + strLen);
     }
-    //store original source
-    if (m_originalSrc)
-        free(m_originalSrc);
-    m_originalSrc = strdup(m_src.c_str());
+    // Store original source as some 'parsing' functions actually modify m_src.
+    // Note: assign() call is a workaround for the reference-counting
+    //  std::string in GCC's STL - we need a deep copy here.
+    m_originalSrc.assign(m_src.c_str(), m_src.size());
+
+    validateGLESKeywords(m_originalSrc.c_str());
 
     clearParsedSrc();
 
@@ -79,7 +73,13 @@ const GLchar** ShaderParser::parsedLines() {
       return const_cast<const GLchar**> (&m_parsedLines);
 };
 
-const char* ShaderParser::getOriginalSrc(){
+void ShaderParser::clear() {
+    m_parsedLines = nullptr;
+    std::string().swap(m_parsedSrc);
+    std::string().swap(m_src);
+}
+
+const std::string& ShaderParser::getOriginalSrc() const {
     return m_originalSrc;
 }
 
@@ -107,6 +107,8 @@ void ShaderParser::parseGLSLversion() {
         PARSE_IN_LINE_COMMENT
     } parseState = PARSE_NONE;
     const char *c = src;
+
+    #define IS_VALID_VERSION(v) ( (v) == 100 || (v) == 300 || (v) == 310 )
 
     while( c && *c != '\0') {
         if (parseState == PARSE_IN_C_COMMENT) {
@@ -154,7 +156,7 @@ void ShaderParser::parseGLSLversion() {
 
                     // Use the version from the source but only if
                     // it is larger than our minGLSLVersion
-                    if (ver > minGLSLVersion) glslVersion = ver;
+                    if (!IS_VALID_VERSION(ver) || ver > minGLSLVersion) glslVersion = ver;
                 }
             }
 
@@ -329,20 +331,23 @@ GLenum ShaderParser::getType() {
     return m_type;
 }
 
-void ShaderParser::setInfoLog(GLchar* infoLog)
-{
-    delete[] m_infoLog;
-    m_infoLog = infoLog;
+void ShaderParser::setInfoLog(GLchar* infoLog) {
+    assert(infoLog);
+    std::unique_ptr<GLchar[]> infoLogDeleter(infoLog);
+    m_infoLog.assign(infoLog);
 }
 
-GLchar* ShaderParser::getInfoLog()
-{   
-    return m_infoLog;
+bool ShaderParser::validShader() const {
+    return m_valid;
 }
 
-ShaderParser::~ShaderParser(){
-    clearParsedSrc();
-    if (m_originalSrc)
-        free(m_originalSrc);
-    delete[] m_infoLog;
+static const GLchar glsles_invalid[] =
+    { "ERROR: Valid GLSL but not GLSL ES" };
+
+void ShaderParser::setInvalidInfoLog() {
+    m_infoLog = glsles_invalid;
+}
+
+const GLchar* ShaderParser::getInfoLog() const {
+    return m_infoLog.c_str();
 }
