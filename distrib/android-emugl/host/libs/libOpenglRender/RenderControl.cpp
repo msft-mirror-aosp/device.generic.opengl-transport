@@ -221,6 +221,17 @@ static uint32_t rcCreateColorBuffer(uint32_t width,
     return fb->createColorBuffer(width, height, internalFormat);
 }
 
+static uint32_t rcCreateColorBufferPuid(uint32_t width, uint32_t height,
+                                        GLenum internalFormat, uint64_t puid) {
+    FrameBuffer *fb = FrameBuffer::getFB();
+    if (!fb) {
+        return 0;
+    }
+
+    return fb->createColorBufferPuid(width, height, internalFormat, puid);
+}
+
+
 static int rcOpenColorBuffer2(uint32_t colorbuffer)
 {
     FrameBuffer *fb = FrameBuffer::getFB();
@@ -228,6 +239,15 @@ static int rcOpenColorBuffer2(uint32_t colorbuffer)
         return -1;
     }
     return fb->openColorBuffer( colorbuffer );
+}
+
+static int rcOpenColorBuffer2Puid(uint32_t colorbuffer, uint64_t puid)
+{
+    FrameBuffer *fb = FrameBuffer::getFB();
+    if (!fb) {
+        return -1;
+    }
+    return fb->openColorBufferPuid(colorbuffer, puid);
 }
 
 // Deprecated, kept for compatibility with old system images only.
@@ -244,6 +264,14 @@ static void rcCloseColorBuffer(uint32_t colorbuffer)
         return;
     }
     fb->closeColorBuffer( colorbuffer );
+}
+
+static void rcCloseColorBufferPuid(uint32_t colorbuffer, uint64_t puid) {
+    FrameBuffer *fb = FrameBuffer::getFB();
+    if (!fb) {
+        return;
+    }
+    fb->closeColorBufferPuid(colorbuffer, puid);
 }
 
 static int rcFlushWindowColorBuffer(uint32_t windowSurface)
@@ -405,4 +433,7 @@ void initRenderControlContext(renderControl_decoder_context_t *dec)
     dec->rcCreateClientImage = rcCreateClientImage;
     dec->rcDestroyClientImage = rcDestroyClientImage;
     dec->rcSelectChecksumHelper = rcSelectChecksumHelper;
+    dec->rcCreateColorBufferPuid = rcCreateColorBufferPuid;
+    dec->rcCloseColorBufferPuid = rcCloseColorBufferPuid;
+    dec->rcOpenColorBuffer2Puid = rcOpenColorBuffer2Puid;
 }
