@@ -27,6 +27,7 @@
 #include "emugl/common/logging.h"
 
 #include <stdio.h>
+#include <string.h>
 
 namespace {
 
@@ -88,21 +89,21 @@ private:
 FrameBuffer *FrameBuffer::s_theFrameBuffer = NULL;
 HandleType FrameBuffer::s_nextHandle = 0;
 
-static char* getGLES1ExtensionString(EGLDisplay p_dpy)
+static char* getGLES2ExtensionString(EGLDisplay p_dpy)
 {
     EGLConfig config;
     EGLSurface surface;
 
     static const GLint configAttribs[] = {
         EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES_BIT,
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
         EGL_NONE
     };
 
     int n;
     if (!s_egl.eglChooseConfig(p_dpy, configAttribs,
                                &config, 1, &n) || n == 0) {
-        ERR("%s: Could not find GLES 1.x config!\n", __FUNCTION__);
+        ERR("%s: Could not find GLES 2.x config!\n", __FUNCTION__);
         return NULL;
     }
 
@@ -116,36 +117,41 @@ static char* getGLES1ExtensionString(EGLDisplay p_dpy)
 
     surface = s_egl.eglCreatePbufferSurface(p_dpy, config, pbufAttribs);
     if (surface == EGL_NO_SURFACE) {
-        ERR("%s: Could not create GLES 1.x Pbuffer!\n", __FUNCTION__);
+        ERR("%s: Could not create GLES 2.x Pbuffer!\n", __FUNCTION__);
         return NULL;
     }
 
-    static const GLint gles1ContextAttribs[] = {
-        EGL_CONTEXT_CLIENT_VERSION, 1,
+    static const GLint gles2ContextAttribs[] = {
+        EGL_CONTEXT_CLIENT_VERSION, 2,
         EGL_NONE
     };
 
     EGLContext ctx = s_egl.eglCreateContext(p_dpy, config,
                                             EGL_NO_CONTEXT,
-                                            gles1ContextAttribs);
+                                            gles2ContextAttribs);
     if (ctx == EGL_NO_CONTEXT) {
-        ERR("%s: Could not create GLES 1.x Context!\n", __FUNCTION__);
+        ERR("%s: Could not create GLES 2.x Context!\n", __FUNCTION__);
         s_egl.eglDestroySurface(p_dpy, surface);
         return NULL;
     }
 
     if (!s_egl.eglMakeCurrent(p_dpy, surface, surface, ctx)) {
-        ERR("%s: Could not make GLES 1.x context current!\n", __FUNCTION__);
+        ERR("%s: Could not make GLES 2.x context current!\n", __FUNCTION__);
         s_egl.eglDestroySurface(p_dpy, surface);
         s_egl.eglDestroyContext(p_dpy, ctx);
         return NULL;
     }
 
     // the string pointer may become invalid when the context is destroyed
-    const char* s = (const char*)s_gles1.glGetString(GL_EXTENSIONS);
+    const char* s = (const char*)s_gles2.glGetString(GL_EXTENSIONS);
     char* extString = strdup(s ? s : "");
 
-    s_egl.eglMakeCurrent(p_dpy, NULL, NULL, NULL);
+    // It is rare but some drivers actually fail this...
+    if (!s_egl.eglMakeCurrent(p_dpy, NULL, NULL, NULL)) {
+        ERR("%s: Could not unbind context. Please try updating graphics card driver!\n", __FUNCTION__);
+        free(extString);
+        return NULL;
+    }
     s_egl.eglDestroyContext(p_dpy, ctx);
     s_egl.eglDestroySurface(p_dpy, surface);
 
@@ -209,11 +215,11 @@ bool FrameBuffer::initialize(int width, int height, bool useSubWindow)
     // if GLES2 plugin has loaded - try to make GLES2 context and
     // get GLES2 extension string
     //
-    char* gles1Extensions = NULL;
-    gles1Extensions = getGLES1ExtensionString(fb->m_eglDisplay);
-    if (!gles1Extensions) {
+    char* gles2Extensions = NULL;
+    gles2Extensions = getGLES2ExtensionString(fb->m_eglDisplay);
+    if (!gles2Extensions) {
         // Could not create GLES2 context - drop GL2 capability
-        ERR("Failed to obtain GLES 1.x extensions string!\n");
+        ERR("Failed to obtain GLES 2.x extensions string!\n");
         delete fb;
         return false;
     }
@@ -235,7 +241,7 @@ bool FrameBuffer::initialize(int width, int height, bool useSubWindow)
     if (!s_egl.eglChooseConfig(fb->m_eglDisplay, configAttribs,
                                &fb->m_eglConfig, 1, &n)) {
         ERR("Failed on eglChooseConfig\n");
-        free(gles1Extensions);
+        free(gles2Extensions);
         delete fb;
         return false;
     }
@@ -252,7 +258,7 @@ bool FrameBuffer::initialize(int width, int height, bool useSubWindow)
                                               glContextAttribs);
     if (fb->m_eglContext == EGL_NO_CONTEXT) {
         ERR("Failed to create context 0x%x\n", s_egl.eglGetError());
-        free(gles1Extensions);
+        free(gles2Extensions);
         delete fb;
         return false;
     }
@@ -272,7 +278,7 @@ bool FrameBuffer::initialize(int width, int height, bool useSubWindow)
                                                glContextAttribs);
     if (fb->m_pbufContext == EGL_NO_CONTEXT) {
         ERR("Failed to create Pbuffer Context 0x%x\n", s_egl.eglGetError());
-        free(gles1Extensions);
+        free(gles2Extensions);
         delete fb;
         return false;
     }
@@ -294,7 +300,7 @@ bool FrameBuffer::initialize(int width, int height, bool useSubWindow)
                                                       pbufAttribs);
     if (fb->m_pbufSurface == EGL_NO_SURFACE) {
         ERR("Failed to create pbuf surface for FB 0x%x\n", s_egl.eglGetError());
-        free(gles1Extensions);
+        free(gles2Extensions);
         delete fb;
         return false;
     }
@@ -304,7 +310,7 @@ bool FrameBuffer::initialize(int width, int height, bool useSubWindow)
     ScopedBind bind(fb);
     if (!bind.isValid()) {
         ERR("Failed to make current\n");
-        free(gles1Extensions);
+        free(gles2Extensions);
         delete fb;
         return false;
     }
@@ -316,16 +322,15 @@ bool FrameBuffer::initialize(int width, int height, bool useSubWindow)
     //const char* gles2Extensions = (const char *)s_gles2.glGetString(GL_EXTENSIONS);
     bool has_gl_oes_image = false;
 
-//     printf("GLES1 [%s]\n", gles1Extensions);
 //     printf("GLES2 [%s]\n", gles2Extensions);
 
     has_gl_oes_image = true;
 
     if (has_gl_oes_image) {
-        has_gl_oes_image &= strstr(gles1Extensions, "GL_OES_EGL_image") != NULL;
+        has_gl_oes_image &= strstr(gles2Extensions, "GL_OES_EGL_image") != NULL;
     }
-    free((void*)gles1Extensions);
-    gles1Extensions = NULL;
+    free((void*)gles2Extensions);
+    gles2Extensions = NULL;
 
     const char *eglExtensions = s_egl.eglQueryString(fb->m_eglDisplay,
                                                      EGL_EXTENSIONS);
@@ -383,18 +388,13 @@ bool FrameBuffer::initialize(int width, int height, bool useSubWindow)
     }
 
     //
-    // Fail initialization if no GLES configs exist
+    // Don't fail initialization if no GLES configs exist
     //
-    if (nGLConfigs == 0) {
-        bind.release();
-        delete fb;
-        return false;
-    }
 
     //
-    // If no GLES2 configs exist - not GLES2 capability
+    // If no configs at all, exit
     //
-    if (nGL2Configs == 0) {
+    if (nGLConfigs + nGL2Configs == 0) {
         ERR("Failed: No GLES 2.x configs found!\n");
         bind.release();
         delete fb;
@@ -411,7 +411,7 @@ bool FrameBuffer::initialize(int width, int height, bool useSubWindow)
     fb->m_glRenderer = (const char*)s_gles2.glGetString(GL_RENDERER);
     fb->m_glVersion = (const char*)s_gles2.glGetString(GL_VERSION);
 
-    fb->m_textureDraw = new TextureDraw(fb->m_eglDisplay);
+    fb->m_textureDraw = new TextureDraw();
     if (!fb->m_textureDraw) {
         ERR("Failed: creation of TextureDraw instance\n");
         bind.release();
@@ -524,10 +524,21 @@ bool FrameBuffer::setupSubWindow(FBNativeWindowType p_window,
     if (m_subWin && bindSubwin_locked()) {
 
         // Only attempt to update window geometry if anything has actually changed.
-        if (!(m_x == wx &&
-              m_y == wy &&
-              m_windowWidth == ww &&
-              m_windowHeight == wh)) {
+        bool updateSubWindow = !(m_x == wx && m_y == wy &&
+                                 m_windowWidth == ww && m_windowHeight == wh);
+
+        // On Mac, since window coordinates are Y-up and not Y-down, the
+        // subwindow may not change dimensions, but because the main window
+        // did, the subwindow technically needs to be re-positioned. This
+        // can happen on rotation, so a change in Z-rotation can be checked
+        // for this case. However, this *should not* be done on Windows/Linux,
+        // because the functions used to resize a native window on those hosts
+        // will block if the shape doesn't actually change, freezing the
+        // emulator.
+#if defined(__APPLE__)
+        updateSubWindow |= (m_zRot != zRot);
+#endif
+        if (updateSubWindow) {
 
             m_x = wx;
             m_y = wy;
@@ -536,6 +547,10 @@ bool FrameBuffer::setupSubWindow(FBNativeWindowType p_window,
 
             success = ::moveSubWindow(m_nativeWindow, m_subWin,
                                       m_x, m_y, m_windowWidth, m_windowHeight);
+
+        // Otherwise, ensure that at least viewport parameters are properly updated.
+        } else {
+            success = true;
         }
 
         if (success) {
@@ -594,9 +609,10 @@ HandleType FrameBuffer::genHandle()
     return id;
 }
 
-HandleType FrameBuffer::createColorBufferLocked(int p_width, int p_height,
-                                                GLenum p_internalFormat)
+HandleType FrameBuffer::createColorBuffer(int p_width, int p_height,
+                                          GLenum p_internalFormat)
 {
+    emugl::Mutex::AutoLock mutex(m_lock);
     HandleType ret = 0;
 
     ColorBufferPtr cb(ColorBuffer::create(
@@ -610,24 +626,12 @@ HandleType FrameBuffer::createColorBufferLocked(int p_width, int p_height,
         ret = genHandle();
         m_colorbuffers[ret].cb = cb;
         m_colorbuffers[ret].refcount = 1;
-    }
-    return ret;
-}
 
-HandleType FrameBuffer::createColorBuffer(int p_width, int p_height,
-                                          GLenum p_internalFormat) {
-    emugl::Mutex::AutoLock mutex(m_lock);
-    return createColorBufferLocked(p_width, p_height, p_internalFormat);
-}
-
-HandleType FrameBuffer::createColorBufferPuid(int p_width, int p_height,
-                                              GLenum p_internalFormat,
-                                              uint64_t puid) {
-    emugl::Mutex::AutoLock mutex(m_lock);
-    HandleType ret = createColorBufferLocked(
-                            p_width, p_height, p_internalFormat);
-    if (ret>0) {
-        m_procOwnedColorBuffers[puid].insert(ret);
+        RenderThreadInfo *tInfo = RenderThreadInfo::get();
+        uint64_t puid = tInfo->m_puid;
+        if (puid) {
+            m_procOwnedColorBuffers[puid].insert(ret);
+        }
     }
     return ret;
 }
@@ -743,8 +747,9 @@ void FrameBuffer::DestroyWindowSurface(HandleType p_surface)
     }
 }
 
-int FrameBuffer::openColorBufferLocked(HandleType p_colorbuffer)
-{
+int FrameBuffer::openColorBuffer(HandleType p_colorbuffer) {
+    emugl::Mutex::AutoLock mutex(m_lock);
+
     ColorBufferMap::iterator c(m_colorbuffers.find(p_colorbuffer));
     if (c == m_colorbuffers.end()) {
         // bad colorbuffer handle
@@ -752,25 +757,29 @@ int FrameBuffer::openColorBufferLocked(HandleType p_colorbuffer)
         return -1;
     }
     (*c).second.refcount++;
+
+    RenderThreadInfo *tInfo = RenderThreadInfo::get();
+    uint64_t puid = tInfo->m_puid;
+    if (puid) {
+        m_procOwnedColorBuffers[puid].insert(p_colorbuffer);
+    }
     return 0;
 }
 
-int FrameBuffer::openColorBuffer(HandleType p_colorbuffer) {
+void FrameBuffer::closeColorBuffer(HandleType p_colorbuffer) {
     emugl::Mutex::AutoLock mutex(m_lock);
-    return openColorBufferLocked(p_colorbuffer);
-}
-
-int FrameBuffer::openColorBufferPuid(HandleType p_colorbuffer, uint64_t puid) {
-    emugl::Mutex::AutoLock mutex(m_lock);
-    int ret = openColorBufferLocked(p_colorbuffer);
-    if (ret == 0) {
-        m_procOwnedColorBuffers[puid].insert(p_colorbuffer);
+    closeColorBufferLocked(p_colorbuffer);
+    RenderThreadInfo *tInfo = RenderThreadInfo::get();
+    uint64_t puid = tInfo->m_puid;
+    if (puid) {
+        auto ite = m_procOwnedColorBuffers.find(puid);
+        if (ite != m_procOwnedColorBuffers.end()) {
+            ite->second.erase(p_colorbuffer);
+        }
     }
-    return ret;
 }
 
-void FrameBuffer::closeColorBufferLocked(HandleType p_colorbuffer)
-{
+void FrameBuffer::closeColorBufferLocked(HandleType p_colorbuffer) {
     ColorBufferMap::iterator c(m_colorbuffers.find(p_colorbuffer));
     if (c == m_colorbuffers.end()) {
         // This is harmless: it is normal for guest system to issue
@@ -781,20 +790,6 @@ void FrameBuffer::closeColorBufferLocked(HandleType p_colorbuffer)
     }
     if (--(*c).second.refcount == 0) {
         m_colorbuffers.erase(c);
-    }
-}
-
-void FrameBuffer::closeColorBuffer(HandleType p_colorbuffer) {
-    emugl::Mutex::AutoLock mutex(m_lock);
-    closeColorBufferLocked(p_colorbuffer);
-}
-
-void FrameBuffer::closeColorBufferPuid(HandleType p_colorbuffer, uint64_t puid) {
-    emugl::Mutex::AutoLock mutex(m_lock);
-    closeColorBufferLocked(p_colorbuffer);
-    auto ite = m_procOwnedColorBuffers.find(puid);
-    if (ite != m_procOwnedColorBuffers.end()) {
-        ite->second.erase(p_colorbuffer);
     }
 }
 
@@ -821,7 +816,8 @@ void FrameBuffer::cleanupProcGLObjects(uint64_t puid) {
         auto procIte = m_procOwnedEGLImages.find(puid);
         if (procIte != m_procOwnedEGLImages.end()) {
             for (auto eglImg : procIte->second) {
-                destroyClientImage(eglImg);
+                s_egl.eglDestroyImageKHR(m_eglDisplay,
+                            reinterpret_cast<EGLImageKHR>((HandleType)eglImg));
             }
             m_procOwnedEGLImages.erase(procIte);
         }
@@ -975,6 +971,23 @@ bool FrameBuffer::bindContext(HandleType p_context,
         return false;
     }
 
+    if (ctx) {
+        if (ctx.get()->getEmulatedGLES1Context()) {
+            DBG("%s: found emulated gles1 context @ %p\n", __FUNCTION__, ctx.get()->getEmulatedGLES1Context());
+            s_gles1.set_current_gles_context(ctx.get()->getEmulatedGLES1Context());
+            DBG("%s: set emulated gles1 context current in thread info\n", __FUNCTION__);
+
+            if (draw.get() == NULL) {
+                DBG("%s: setup make current (null draw surface)\n", __FUNCTION__);
+                s_gles1.make_current_setup(0, 0);
+            } else {
+                DBG("%s: setup make current (draw surface %ux%u)\n", __FUNCTION__, draw->getWidth(), draw->getHeight());
+                s_gles1.make_current_setup(draw->getWidth(), draw->getHeight());
+            }
+            DBG("%s: set up the emulated gles1 context's info\n", __FUNCTION__);
+        }
+    }
+
     //
     // Bind the surface(s) to the context
     //
@@ -1031,34 +1044,37 @@ HandleType FrameBuffer::createClientImage(HandleType context, EGLenum target, GL
     }
 
     EGLContext eglContext = ctx ? ctx->getEGLContext() : EGL_NO_CONTEXT;
-    EGLImageKHR image = s_egl.eglCreateImageKHR(m_eglDisplay, eglContext, target, (EGLClientBuffer)buffer, NULL);
+    EGLImageKHR image = s_egl.eglCreateImageKHR(
+                            m_eglDisplay, eglContext, target,
+                            reinterpret_cast<EGLClientBuffer>(buffer), NULL);
+    HandleType imgHnd = (HandleType)reinterpret_cast<uintptr_t>(image);
 
-    return (HandleType)reinterpret_cast<uintptr_t>(image);
+    RenderThreadInfo *tInfo = RenderThreadInfo::get();
+    uint64_t puid = tInfo->m_puid;
+    if (puid) {
+        emugl::Mutex::AutoLock mutex(m_lock);
+        m_procOwnedEGLImages[puid].insert(imgHnd);
+    }
+    return imgHnd;
 }
 
-EGLBoolean FrameBuffer::destroyClientImage(HandleType image)
-{
-    return s_egl.eglDestroyImageKHR(m_eglDisplay, (EGLImageKHR)image);
-}
-
-HandleType FrameBuffer::createClientImagePuid(HandleType context, EGLenum target,
-                                              GLuint buffer, uint64_t puid) {
-    emugl::Mutex::AutoLock mutex(m_lock);
-    HandleType handle = createClientImage(context, target, buffer);
-    m_procOwnedEGLImages[puid].insert(handle);
-    return handle;
-}
-
-EGLBoolean FrameBuffer::destroyClientImagePuid(HandleType image, uint64_t puid) {
-    emugl::Mutex::AutoLock mutex(m_lock);
-    EGLBoolean ret = destroyClientImage(image);
-    m_procOwnedEGLImages[puid].erase(image);
-    // We don't explicitly call m_procOwnedEGLImages.erase(puid) when the size
-    // reaches 0, since it could go between zero and one many times in the
-    // lifetime of a process.
-    // It will be cleaned up by cleanupProcGLObjects(puid) when the process is
-    // dead.
-    return ret;
+EGLBoolean FrameBuffer::destroyClientImage(HandleType image) {
+    // eglDestroyImageKHR has its own lock  already.
+    EGLBoolean ret = s_egl.eglDestroyImageKHR(m_eglDisplay,
+                                reinterpret_cast<EGLImageKHR>(image));
+    if (!ret) return false;
+    RenderThreadInfo *tInfo = RenderThreadInfo::get();
+    uint64_t puid = tInfo->m_puid;
+    if (puid) {
+        emugl::Mutex::AutoLock mutex(m_lock);
+        m_procOwnedEGLImages[puid].erase(image);
+        // We don't explicitly call m_procOwnedEGLImages.erase(puid) when the size
+        // reaches 0, since it could go between zero and one many times in the
+        // lifetime of a process.
+        // It will be cleaned up by cleanupProcGLObjects(puid) when the process is
+        // dead.
+    }
+    return true;
 }
 
 //
@@ -1123,12 +1139,8 @@ bool FrameBuffer::unbind_locked()
 void FrameBuffer::createTrivialContext(HandleType shared,
                                        HandleType* contextOut,
                                        HandleType* surfOut) {
-    if (!contextOut || !surfOut) {
-        ERR("Framebuffer::%s: attempted with no place to output "
-            "resulting context and surface!\n",
-            __FUNCTION__);
-        abort();
-    }
+    assert(contextOut);
+    assert(surfOut);
 
     *contextOut = createRenderContext(0, shared, true);
     *surfOut = createWindowSurface(0, 1, 1);
