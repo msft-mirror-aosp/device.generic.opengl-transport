@@ -23,31 +23,31 @@
 #include "RendererImpl.h"
 #include "RenderChannelImpl.h"
 #include "RenderThreadInfo.h"
-#include "TimeUtils.h"
 
 #include "OpenGLESDispatch/EGLDispatch.h"
 #include "OpenGLESDispatch/GLESv2Dispatch.h"
 #include "OpenGLESDispatch/GLESv1Dispatch.h"
 #include "../../../shared/OpenglCodecCommon/ChecksumCalculatorThreadInfo.h"
 
+#include "android/base/system/System.h"
+
 #include <memory>
+#include <string.h>
 
 #define STREAM_BUFFER_SIZE 4 * 1024 * 1024
 
 RenderThread::RenderThread(std::weak_ptr<emugl::RendererImpl> renderer,
-                           std::shared_ptr<emugl::RenderChannelImpl> channel,
-                           emugl::Mutex* lock)
-    : m_lock(lock), mChannel(channel), mRenderer(renderer) {}
+                           std::shared_ptr<emugl::RenderChannelImpl> channel)
+    : mChannel(channel), mRenderer(renderer) {}
 
 RenderThread::~RenderThread() = default;
 
 // static
 std::unique_ptr<RenderThread> RenderThread::create(
         std::weak_ptr<emugl::RendererImpl> renderer,
-        std::shared_ptr<emugl::RenderChannelImpl> channel,
-        emugl::Mutex* lock) {
+        std::shared_ptr<emugl::RenderChannelImpl> channel) {
     return std::unique_ptr<RenderThread>(
-            new RenderThread(renderer, channel, lock));
+            new RenderThread(renderer, channel));
 }
 
 intptr_t RenderThread::main() {
@@ -57,20 +57,10 @@ intptr_t RenderThread::main() {
         return 0;
     }
 
-    if ((flags & IOSTREAM_CLIENT_EXIT_SERVER) == IOSTREAM_CLIENT_EXIT_SERVER) {
-        // The old code had a separate server thread, this flag meant 'exit the
-        // server thread'. It's not used anymore, but let's just make sure...
-        if (auto renderer = mRenderer.lock()) {
-            renderer->stop();
-        }
-        return 0;
-    }
+    // |flags| used to have something, now they're not used.
+    (void)flags;
 
-    std::unique_ptr<IOStream> stream(new ChannelStream(mChannel, 384));
-    if (!stream) {
-        return 0;
-    }
-
+    ChannelStream stream(mChannel, emugl::ChannelBuffer::kSmallSize);
     RenderThreadInfo tInfo;
     ChecksumCalculatorThreadInfo tChecksumInfo;
 
@@ -84,7 +74,7 @@ intptr_t RenderThread::main() {
     ReadBuffer readBuf(STREAM_BUFFER_SIZE);
 
     int stats_totalBytes = 0;
-    long long stats_t0 = GetCurrentTimeMS();
+    long long stats_t0 = android::base::System::get()->getHighResTimeUs() / 1000;
 
     //
     // open dump file if RENDER_DUMP_DIR is defined
@@ -104,7 +94,7 @@ intptr_t RenderThread::main() {
     }
 
     while (1) {
-        int stat = readBuf.getData(stream.get());
+        int stat = readBuf.getData(&stream);
         if (stat <= 0) {
             break;
         }
@@ -113,13 +103,13 @@ intptr_t RenderThread::main() {
         // log received bandwidth statistics
         //
         stats_totalBytes += readBuf.validData();
-        long long dt = GetCurrentTimeMS() - stats_t0;
+        long long dt = android::base::System::get()->getHighResTimeUs() / 1000 - stats_t0;
         if (dt > 1000) {
             // float dts = (float)dt / 1000.0f;
             // printf("Used Bandwidth %5.3f MB/s\n", ((float)stats_totalBytes /
             // dts) / (1024.0f*1024.0f));
             stats_totalBytes = 0;
-            stats_t0 = GetCurrentTimeMS();
+            stats_t0 = android::base::System::get()->getHighResTimeUs() / 1000;
         }
 
         //
@@ -135,13 +125,23 @@ intptr_t RenderThread::main() {
         do {
             progress = false;
 
-            m_lock->lock();
-            //
             // try to process some of the command buffer using the GLESv1
             // decoder
             //
+            // DRIVER WORKAROUND:
+            // On Linux with NVIDIA GPU's at least, we need to avoid performing
+            // GLES ops while someone else holds the FrameBuffer write lock.
+            //
+            // To be more specific, on Linux with NVIDIA Quadro K2200 v361.xx,
+            // we get a segfault in the NVIDIA driver when glTexSubImage2D
+            // is called at the same time as glXMake(Context)Current.
+            //
+            // To fix, this driver workaround avoids calling
+            // any sort of GLES call when we are creating/destroying EGL
+            // contexts.
+            FrameBuffer::getFB()->lockContextStructureRead();
             size_t last = tInfo.m_glDec.decode(
-                    readBuf.buf(), readBuf.validData(), stream.get());
+                    readBuf.buf(), readBuf.validData(), &stream);
             if (last > 0) {
                 progress = true;
                 readBuf.consume(last);
@@ -152,7 +152,9 @@ intptr_t RenderThread::main() {
             // decoder
             //
             last = tInfo.m_gl2Dec.decode(readBuf.buf(), readBuf.validData(),
-                                         stream.get());
+                                         &stream);
+            FrameBuffer::getFB()->unlockContextStructureRead();
+
             if (last > 0) {
                 progress = true;
                 readBuf.consume(last);
@@ -163,13 +165,11 @@ intptr_t RenderThread::main() {
             // renderControl decoder
             //
             last = tInfo.m_rcDec.decode(readBuf.buf(), readBuf.validData(),
-                                        stream.get());
+                                        &stream);
             if (last > 0) {
                 readBuf.consume(last);
                 progress = true;
             }
-
-            m_lock->unlock();
 
         } while (progress);
     }
@@ -177,6 +177,9 @@ intptr_t RenderThread::main() {
     if (dumpFP) {
         fclose(dumpFP);
     }
+
+    // exit sync thread, if any.
+    SyncThread::destroySyncThread();
 
     //
     // Release references to the current thread's context/surfaces if any
@@ -191,7 +194,7 @@ intptr_t RenderThread::main() {
 
     FrameBuffer::getFB()->drainRenderContext();
 
-    DBG("Exited a RenderThread\n");
+    DBG("Exited a RenderThread @%p\n", this);
 
     return 0;
 }
