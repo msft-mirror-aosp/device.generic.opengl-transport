@@ -83,14 +83,13 @@ void RendererImpl::stop() {
 
     for (const auto& t : mThreads) {
         if (const auto channel = t.second.lock()) {
-            channel->forceStop();
+            channel->stopFromHost();
         }
     }
 }
 
 RenderChannelPtr RendererImpl::createRenderChannel() {
-    const auto channel =
-            std::make_shared<RenderChannelImpl>(shared_from_this());
+    const auto channel = std::make_shared<RenderChannelImpl>();
 
     std::unique_ptr<RenderThread> rt(RenderThread::create(
             shared_from_this(), channel, &mRenderThreadSharedLock));

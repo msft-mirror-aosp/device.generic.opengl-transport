@@ -31,36 +31,43 @@
 
 #include "android/base/system/System.h"
 
-#include <memory>
+#define EMUGL_DEBUG_LEVEL 0
+#include "emugl/common/debug.h"
+
+#include <assert.h>
+#include <stdio.h>
 #include <string.h>
 
-#define STREAM_BUFFER_SIZE 4 * 1024 * 1024
+namespace emugl {
 
-RenderThread::RenderThread(std::weak_ptr<emugl::RendererImpl> renderer,
-                           std::shared_ptr<emugl::RenderChannelImpl> channel)
+// Start with a smaller buffer to not waste memory on a low-used render threads.
+static constexpr int kStreamBufferSize = 128 * 1024;
+
+RenderThread::RenderThread(std::weak_ptr<RendererImpl> renderer,
+                           std::shared_ptr<RenderChannelImpl> channel)
     : mChannel(channel), mRenderer(renderer) {}
 
 RenderThread::~RenderThread() = default;
 
 // static
 std::unique_ptr<RenderThread> RenderThread::create(
-        std::weak_ptr<emugl::RendererImpl> renderer,
-        std::shared_ptr<emugl::RenderChannelImpl> channel) {
+        std::weak_ptr<RendererImpl> renderer,
+        std::shared_ptr<RenderChannelImpl> channel) {
     return std::unique_ptr<RenderThread>(
             new RenderThread(renderer, channel));
 }
 
 intptr_t RenderThread::main() {
+    ChannelStream stream(mChannel, RenderChannel::Buffer::kSmallSize);
+
     uint32_t flags = 0;
-    if (mChannel->readFromGuest(reinterpret_cast<char*>(&flags),
-                                sizeof(flags), true) != sizeof(flags)) {
+    if (stream.read(&flags, sizeof(flags)) != sizeof(flags)) {
         return 0;
     }
 
     // |flags| used to have something, now they're not used.
     (void)flags;
 
-    ChannelStream stream(mChannel, emugl::ChannelBuffer::kSmallSize);
     RenderThreadInfo tInfo;
     ChecksumCalculatorThreadInfo tChecksumInfo;
     ChecksumCalculator& checksumCalc = tChecksumInfo.get();
@@ -72,7 +79,7 @@ intptr_t RenderThread::main() {
     tInfo.m_gl2Dec.initGL(gles2_dispatch_get_proc_func, NULL);
     initRenderControlContext(&tInfo.m_rcDec);
 
-    ReadBuffer readBuf(STREAM_BUFFER_SIZE);
+    ReadBuffer readBuf(kStreamBufferSize);
 
     int stats_totalBytes = 0;
     long long stats_t0 = android::base::System::get()->getHighResTimeUs() / 1000;
@@ -95,10 +102,29 @@ intptr_t RenderThread::main() {
     }
 
     while (1) {
-        int stat = readBuf.getData(&stream);
+        // Let's make sure we read enough data for at least some processing.
+        int packetSize;
+        if (readBuf.validData() >= 8) {
+            // We know that packet size is the second int32_t from the start.
+            packetSize = *(const int32_t*)(readBuf.buf() + 4);
+        } else {
+            // Read enough data to at least be able to get the packet size next
+            // time.
+            packetSize = 8;
+        }
+
+        // We should've processed the packet on the previous iteration if it
+        // was already in the buffer.
+        assert(packetSize > (int)readBuf.validData());
+
+        const int stat = readBuf.getData(&stream, packetSize);
         if (stat <= 0) {
+            D("Warning: render thread could not read data from stream");
             break;
         }
+        DD("render thread read %d bytes, op %d, packet size %d",
+           (int)readBuf.validData(), *(int32_t*)readBuf.buf(),
+           *(int32_t*)(readBuf.buf() + 4));
 
         //
         // log received bandwidth statistics
@@ -171,7 +197,6 @@ intptr_t RenderThread::main() {
                 readBuf.consume(last);
                 progress = true;
             }
-
         } while (progress);
     }
 
@@ -198,3 +223,5 @@ intptr_t RenderThread::main() {
 
     return 0;
 }
+
+}  // namespace emugl

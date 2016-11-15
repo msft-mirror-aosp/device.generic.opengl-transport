@@ -14,61 +14,76 @@
 #pragma once
 
 #include "OpenglRender/RenderChannel.h"
+#include "BufferQueue.h"
 #include "RendererImpl.h"
-
-#include "android/base/Compiler.h"
-#include "android/base/synchronization/MessageChannel.h"
-
-#include <memory>
 
 namespace emugl {
 
+// Implementation of the RenderChannel interface that connects a guest
+// client thread (really an AndroidPipe implementation) to a host
+// RenderThread instance.
 class RenderChannelImpl final : public RenderChannel {
 public:
-    RenderChannelImpl(std::shared_ptr<RendererImpl> renderer);
+    // Default constructor.
+    RenderChannelImpl();
 
-public:
-    // RenderChannel implementation, operations provided for a guest system
-    virtual void setEventCallback(EventCallback callback) override final;
+    /////////////////////////////////////////////////////////////////
+    // RenderChannel overriden methods. These are called from the guest
+    // client thread.
 
-    virtual bool write(ChannelBuffer&& buffer) override final;
-    virtual bool read(ChannelBuffer* buffer, CallType type) override final;
+    // Set the event |callback| to be notified when the host changes the
+    // state of the channel, according to the event mask provided by
+    // setWantedEvents(). Call this function right after creating the
+    // instance.
+    virtual void setEventCallback(EventCallback&& callback) override final;
 
-    virtual State currentState() const override final { return mState; }
+    // Set the mask of events the guest wants to be notified of from the
+    // host thread.
+    virtual void setWantedEvents(State state) override final;
 
+    // Return the current channel state relative to the guest.
+    virtual State state() const override final;
+
+    // Try to send a buffer from the guest to the host render thread.
+    virtual IoResult tryWrite(Buffer&& buffer) override final;
+
+    // Try to read a buffer from the host render thread into the guest.
+    virtual IoResult tryRead(Buffer* buffer) override final;
+
+    // Close the channel from the guest.
     virtual void stop() override final;
-    virtual bool isStopped() const override final;
 
-public:
-    // These functions are for the RenderThread, they could be called in
-    // parallel with the ones from the RenderChannel interface. Make sure the
-    // internal state remains consistent all the time.
-    void writeToGuest(ChannelBuffer&& buf);
-    size_t readFromGuest(ChannelBuffer::value_type* buf, size_t size,
-                         bool blocking);
-    void forceStop();
+    /////////////////////////////////////////////////////////////////
+    // These functions are called from the host render thread.
+
+    // Send a buffer to the guest, this call is blocking. On success,
+    // move |buffer| into the channel and return true. On failure, return
+    // false (meaning that the channel was closed).
+    bool writeToGuest(Buffer&& buffer);
+
+    // Read data from the guest. If |blocking| is true, the call will be
+    // blocking. On success, move item into |*buffer| and return true. On
+    // failure, return IoResult::Error to indicate the channel was closed,
+    // or IoResult::TryAgain to indicate it was empty (this can happen only
+    // if |blocking| is false).
+    IoResult readFromGuest(Buffer* buffer, bool blocking);
+
+    // Close the channel from the host.
+    void stopFromHost();
 
 private:
-    DISALLOW_COPY_ASSIGN_AND_MOVE(RenderChannelImpl);
+    void updateStateLocked();
+    void notifyStateChangeLocked();
 
-private:
-    void onEvent(bool byGuest);
-    State calcState() const;
-    void stop(bool byGuest);
+    EventCallback mEventCallback;
 
-private:
-    std::shared_ptr<RendererImpl> mRenderer;
-
-    EventCallback mOnEvent;
+    // A single lock to protect the state and the two buffer queues at the
+    // same time. NOTE: This needs to appear before the BufferQueue instances.
+    mutable android::base::Lock mLock;
     State mState = State::Empty;
-    bool mStopped = false;
-
-    static const size_t kChannelCapacity = 256;
-    android::base::MessageChannel<ChannelBuffer, kChannelCapacity> mFromGuest;
-    android::base::MessageChannel<ChannelBuffer, kChannelCapacity> mToGuest;
-
-    ChannelBuffer mFromGuestBuffer;
-    size_t mFromGuestBufferLeft = 0;
+    State mWantedEvents = State::Empty;
+    BufferQueue mFromGuest;
+    BufferQueue mToGuest;
 };
 
 }  // namespace emugl
