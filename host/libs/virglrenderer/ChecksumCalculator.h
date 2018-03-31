@@ -1,18 +1,18 @@
 /*
-* Copyright (C) 2016 The Android Open Source Project
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-* http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Copyright (C) 2016 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #pragma once
 
@@ -29,7 +29,11 @@
 #define LOG_CHECKSUMHELPER(x...)
 #endif
 
-namespace android { namespace base { class Stream; } }
+namespace android {
+namespace base {
+class Stream;
+}
+}  // namespace android
 
 // ChecksumCalculator adds checksum as an array of bytes to GL pipe communication, which
 // size depends on the protocol version. Each pipe should use one ChecksumCalculator.
@@ -124,11 +128,13 @@ namespace android { namespace base { class Stream; } }
 // }
 
 class ChecksumCalculator {
-public:
+  public:
     static constexpr size_t kMaxChecksumLength = 8;
 
     // Get and set current checksum version
-    uint32_t getVersion() const { return m_version; }
+    uint32_t getVersion() const {
+        return m_version;
+    }
     // Call setVersion to set a checksum version. It should be called before
     // addBuffer(), writeChecksum() and validate(). And it should be called
     // exact once per rendering thread if both host and guest support checksum.
@@ -146,7 +152,9 @@ public:
     static const char* getMaxVersionStrPrefix();
 
     // Size of checksum in the current version
-    size_t checksumByteSize() const { return m_checksumSize; }
+    size_t checksumByteSize() const {
+        return m_checksumSize;
+    }
 
     // Update the current checksum value from the data
     // at |buf| of |bufLen| bytes. Once all buffers
@@ -169,11 +177,7 @@ public:
     // Will reset the list of buffers by calling resetChecksum.
     bool validate(const void* expectedChecksum, size_t expectedChecksumLen);
 
-    // Snapshot support.
-    void save(android::base::Stream* stream);
-    void load(android::base::Stream* stream);
-
-private:
+  private:
     static constexpr size_t kVersion1ChecksumSize = 8;  // 2 x uint32_t
 
     static_assert(kVersion1ChecksumSize <= kMaxChecksumLength,

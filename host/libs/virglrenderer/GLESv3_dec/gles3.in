@@ -196,7 +196,7 @@ GL_ENTRY(void, glExtGetFramebuffersQCOM, GLuint *framebuffers, GLint maxFramebuf
 GL_ENTRY(void, glExtGetTexLevelParameterivQCOM, GLuint texture, GLenum face, GLint level, GLenum pname, GLint *params)
 GL_ENTRY(void, glExtTexObjectStateOverrideiQCOM, GLenum target, GLenum pname, GLint param)
 GL_ENTRY(void, glExtGetTexSubImageQCOM, GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, GLvoid *texels)
-GL_ENTRY(void, glExtGetBufferPointervQCOM, GLenum target, GLvoidptr *params)
+GL_ENTRY(void, glExtGetBufferPointervQCOM, GLenum target, GLvoid** params)
 GL_ENTRY(void, glExtGetShadersQCOM, GLuint *shaders, GLint maxShaders, GLint *numShaders)
 GL_ENTRY(void, glExtGetProgramsQCOM, GLuint *programs, GLint maxPrograms, GLint *numPrograms)
 GL_ENTRY(GLboolean, glExtIsProgramBinaryQCOM, GLuint program)
@@ -309,7 +309,7 @@ GL_ENTRY(void, glUniformBlockBinding, GLuint program, GLuint uniformBlockIndex, 
 GL_ENTRY(GLuint, glGetUniformBlockIndex, GLuint program, const GLchar *uniformBlockName)
 
 # Assume uniformNames packed into 1 buffer on the guest.
-GL_ENTRY(void, glGetUniformIndices, GLuint program, GLsizei uniformCount, const GLchar ** uniformNames, GLuint* uniformIndices)
+GL_ENTRY(void, glGetUniformIndices, GLuint program, GLsizei uniformCount, const GLchar*const* uniformNames, GLuint* uniformIndices)
 GL_ENTRY(void, glGetUniformIndicesAEMU, GLuint program, GLsizei uniformCount, const GLchar *packedUniformNames, GLsizei packedLen, GLuint *uniformIndices)
 
 GL_ENTRY(void, glGetActiveUniformBlockiv, GLuint program, GLuint uniformBlockIndex, GLenum pname, GLint *params)
@@ -319,7 +319,7 @@ GL_ENTRY(void, glGetActiveUniformBlockName, GLuint program, GLuint uniformBlockI
 GL_ENTRY(void, glUniform1ui, GLint location, GLuint v0)
 GL_ENTRY(void, glUniform2ui, GLint location, GLuint v0, GLuint v1)
 GL_ENTRY(void, glUniform3ui, GLint location, GLuint v0, GLuint v1, GLuint v2)
-GL_ENTRY(void, glUniform4ui, GLint location, GLint v0, GLuint v1, GLuint v2, GLuint v3)
+GL_ENTRY(void, glUniform4ui, GLint location, GLuint v0, GLuint v1, GLuint v2, GLuint v3)
 GL_ENTRY(void, glUniform1uiv, GLint location, GLsizei count, const GLuint *value)
 GL_ENTRY(void, glUniform2uiv, GLint location, GLsizei count, const GLuint *value)
 GL_ENTRY(void, glUniform3uiv, GLint location, GLsizei count, const GLuint *value)
@@ -399,7 +399,7 @@ GL_ENTRY(void, glBindTransformFeedback, GLenum target, GLuint id)
 GL_ENTRY(void, glPauseTransformFeedback, void)
 GL_ENTRY(void, glResumeTransformFeedback, void)
 GL_ENTRY(GLboolean, glIsTransformFeedback, GLuint id)
-GL_ENTRY(void, glTransformFeedbackVaryings, GLuint program, GLsizei count, const char ** varyings, GLenum bufferMode)
+GL_ENTRY(void, glTransformFeedbackVaryings, GLuint program, GLsizei count, const GLchar*const* varyings, GLenum bufferMode)
 GL_ENTRY(void, glTransformFeedbackVaryingsAEMU, GLuint program, GLsizei count, const char* packedVaryings, GLuint packedVaryingsLen, GLenum bufferMode)
 GL_ENTRY(void, glGetTransformFeedbackVarying, GLuint program, GLuint index, GLsizei bufSize, GLsizei * length, GLsizei * size, GLenum * type, char * name)
 
@@ -473,7 +473,7 @@ GL_ENTRY(void, glUseProgramStages, GLuint pipeline, GLbitfield stages, GLuint pr
 
 # Separable shader programs - may need to change how program objects are represented and shared!
 GL_ENTRY(void, glActiveShaderProgram, GLuint pipeline, GLuint program);
-GL_ENTRY(GLuint, glCreateShaderProgramv, GLenum type, GLsizei count, const char ** strings)
+GL_ENTRY(GLuint, glCreateShaderProgramv, GLenum type, GLsizei count, const GLchar*const* strings)
 GL_ENTRY(GLuint, glCreateShaderProgramvAEMU, GLenum type, GLsizei count, const char *packedStrings, GLuint packedLen)
 # Uniforms should work easily if any program object representation problems are solved.
 GL_ENTRY(void, glProgramUniform1f, GLuint program, GLint location, GLfloat v0)
@@ -485,9 +485,9 @@ GL_ENTRY(void, glProgramUniform2i, GLuint program, GLint location, GLint v0, GLi
 GL_ENTRY(void, glProgramUniform3i, GLuint program, GLint location, GLint v0, GLint v1, GLint v2)
 GL_ENTRY(void, glProgramUniform4i, GLuint program, GLint location, GLint v0, GLint v1, GLint v2, GLint v3)
 GL_ENTRY(void, glProgramUniform1ui, GLuint program, GLint location, GLuint v0)
-GL_ENTRY(void, glProgramUniform2ui, GLuint program, GLint location, GLint v0, GLuint v1)
-GL_ENTRY(void, glProgramUniform3ui, GLuint program, GLint location, GLint v0, GLint v1, GLuint v2)
-GL_ENTRY(void, glProgramUniform4ui, GLuint program, GLint location, GLint v0, GLint v1, GLint v2, GLuint v3)
+GL_ENTRY(void, glProgramUniform2ui, GLuint program, GLint location, GLuint v0, GLuint v1)
+GL_ENTRY(void, glProgramUniform3ui, GLuint program, GLint location, GLuint v0, GLuint v1, GLuint v2)
+GL_ENTRY(void, glProgramUniform4ui, GLuint program, GLint location, GLuint v0, GLuint v1, GLuint v2, GLuint v3)
 GL_ENTRY(void, glProgramUniform1fv, GLuint program, GLint location, GLsizei count, const GLfloat *value)
 GL_ENTRY(void, glProgramUniform2fv, GLuint program, GLint location, GLsizei count, const GLfloat *value)
 GL_ENTRY(void, glProgramUniform3fv, GLuint program, GLint location, GLsizei count, const GLfloat *value)
@@ -529,7 +529,7 @@ GL_ENTRY(void, glDispatchComputeIndirect, GLintptr indirect)
 
 # Separate vertex format / buffer binding
 ### Requires us tp really clean up how draws work in the encoder currently.
-GL_ENTRY(void, glBindVertexBuffer, GLuint bindingindex, GLuint buffer, GLintptr offset, GLintptr stride)
+GL_ENTRY(void, glBindVertexBuffer, GLuint bindingindex, GLuint buffer, GLintptr offset, GLsizei stride)
 GL_ENTRY(void, glVertexAttribBinding, GLuint attribindex, GLuint bindingindex);
 GL_ENTRY(void, glVertexAttribFormat, GLuint attribindex, GLint size, GLenum type, GLboolean normalized, GLuint relativeoffset)
 GL_ENTRY(void, glVertexAttribIFormat, GLuint attribindex, GLint size, GLenum type, GLuint relativeoffset)
