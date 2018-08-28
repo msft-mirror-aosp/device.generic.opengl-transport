@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "renderControl_dec/renderControl_dec.h"
+#include "renderControl_dec.h"
 
 typedef void* EGLDisplay;
 

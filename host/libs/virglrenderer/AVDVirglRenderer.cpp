@@ -17,7 +17,7 @@
 
 extern "C" {
 #include <linux/virtio_gpu.h>
-#include <virgl/virglrenderer.h>
+#include <virglrenderer.h>
 #include <virgl_hw.h>
 }
 

@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "GLESv3_dec/gles3_dec.h"
+#include "gles3_dec.h"
 
 #include <map>
 

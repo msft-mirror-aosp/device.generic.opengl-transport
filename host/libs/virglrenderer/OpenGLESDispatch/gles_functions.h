@@ -16,12 +16,12 @@
 
 #pragma once
 
-#include "OpenGLESDispatch/gles1_core_functions.h"
-#include "OpenGLESDispatch/gles1_extensions_functions.h"
-#include "OpenGLESDispatch/gles2_core_functions.h"
-#include "OpenGLESDispatch/gles2_extensions_functions.h"
-#include "OpenGLESDispatch/gles3_only_functions.h"
-#include "OpenGLESDispatch/gles31_only_functions.h"
+#include "gles1_core_functions.h"
+#include "gles1_extensions_functions.h"
+#include "gles2_core_functions.h"
+#include "gles2_extensions_functions.h"
+#include "gles3_only_functions.h"
+#include "gles31_only_functions.h"
 
 #define LIST_GLES1_FUNCTIONS(X, Y) \
     LIST_GLES1_CORE_FUNCTIONS(X) \

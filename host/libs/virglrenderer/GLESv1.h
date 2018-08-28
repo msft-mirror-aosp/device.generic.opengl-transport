@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "GLESv1_dec/gles1_dec.h"
+#include "gles1_dec.h"
 
 struct GLESv1 : public gles1_decoder_context_t {
     GLESv1();

@@ -19,8 +19,8 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
-#include <OpenGLESDispatch/egl_functions.h>
-#include <OpenGLESDispatch/egl_extensions_functions.h>
+#include <egl_functions.h>
+#include <egl_extensions_functions.h>
 
 #define EGL_DEFINE_TYPE(return_type, function_name, signature, callargs) \
     typedef return_type(EGLAPIENTRY* function_name##_t) signature;

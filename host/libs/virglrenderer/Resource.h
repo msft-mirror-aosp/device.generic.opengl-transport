@@ -17,7 +17,7 @@
 #pragma once
 
 extern "C" {
-#include <virgl/virglrenderer.h>
+#include <virglrenderer.h>
 }
 
 #include <cstdint>
