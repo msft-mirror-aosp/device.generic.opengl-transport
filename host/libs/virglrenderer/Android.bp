@@ -89,68 +89,66 @@ genrule {
   ],
 }
 
-// out/host/linux-x86/bin/emugen_cuttlefish -i device/generic/opengl-transport/host/libs/virglrenderer/renderControl_dec -D /tmp/foo renderControl
-
 genrule {
   name: "gles1_core_functions_hdr",
-  tools: ["gen_entries_cuttlefish"],
-  cmd: "$(location gen_entries_cuttlefish) --mode=funcargs $(in) --output $(out)",
+  tool_files: ["gen_entries.py"],
+  cmd: "python device/generic/opengl-transport/host/libs/virglrenderer/gen_entries.py --mode=funcargs $(in) --output $(out)",
   srcs: ["OpenGLESDispatch/gles1_core.entries"],
   out: ["gles1_core_functions.h"],
 }
 
 genrule {
   name: "gles1_extensions_functions_hdr",
-  tools: ["gen_entries_cuttlefish"],
-  cmd: "$(location gen_entries_cuttlefish) --mode=funcargs $(in) --output $(out)",
+  tool_files: ["gen_entries.py"],
+  cmd: "python device/generic/opengl-transport/host/libs/virglrenderer/gen_entries.py --mode=funcargs $(in) --output $(out)",
   srcs: ["OpenGLESDispatch/gles1_extensions.entries"],
   out: ["gles1_extensions_functions.h"],
 }
 
 genrule {
   name: "egl_functions_hdr",
-  tools: ["gen_entries_cuttlefish"],
-  cmd: "$(location gen_entries_cuttlefish) --mode=funcargs $(in) --output $(out)",
+  tool_files: ["gen_entries.py"],
+  cmd: "python device/generic/opengl-transport/host/libs/virglrenderer/gen_entries.py --mode=funcargs $(in) --output $(out)",
   srcs: ["OpenGLESDispatch/egl.entries"],
   out: ["egl_functions.h"],
 }
 
 genrule {
   name: "gles3_only_functions_hdr",
-  tools: ["gen_entries_cuttlefish"],
-  cmd: "$(location gen_entries_cuttlefish) --mode=funcargs $(in) --output $(out)",
+  tool_files: ["gen_entries.py"],
+  cmd: "python device/generic/opengl-transport/host/libs/virglrenderer/gen_entries.py --mode=funcargs $(in) --output $(out)",
   srcs: ["OpenGLESDispatch/gles3_only.entries"],
   out: ["gles3_only_functions.h"],
 }
 
 genrule {
   name: "gles31_only_functions_hdr",
-  tools: ["gen_entries_cuttlefish"],
-  cmd: "$(location gen_entries_cuttlefish) --mode=funcargs $(in) --output $(out)",
+  tool_files: ["gen_entries.py"],
+  cmd: "python device/generic/opengl-transport/host/libs/virglrenderer/gen_entries.py --mode=funcargs $(in) --output $(out)",
   srcs: ["OpenGLESDispatch/gles31_only.entries"],
   out: ["gles31_only_functions.h"],
 }
 
 genrule {
   name: "gles2_extensions_functions_hdr",
-  tools: ["gen_entries_cuttlefish"],
-  cmd: "$(location gen_entries_cuttlefish) --mode=funcargs $(in) --output $(out)",
+  tool_files: ["gen_entries.py"],
+  cmd: "python device/generic/opengl-transport/host/libs/virglrenderer/gen_entries.py --mode=funcargs $(in) --output $(out)",
   srcs: ["OpenGLESDispatch/gles2_extensions.entries"],
   out: ["gles2_extensions_functions.h"],
 }
 
 genrule {
   name: "egl_extensions_functions_hdr",
-  tools: ["gen_entries_cuttlefish"],
-  cmd: "$(location gen_entries_cuttlefish) --mode=funcargs $(in) --output $(out)",
+  tool_files: ["gen_entries.py"],
+  cmd: "python device/generic/opengl-transport/host/libs/virglrenderer/gen_entries.py --mode=funcargs $(in) --output $(out)",
   srcs: ["OpenGLESDispatch/egl_extensions.entries"],
   out: ["egl_extensions_functions.h"],
 }
 
 genrule {
   name: "gles2_core_functions_hdr",
-  tools: ["gen_entries_cuttlefish"],
-  cmd: "$(location gen_entries_cuttlefish) --mode=funcargs $(in) --output $(out)",
+  tool_files: ["gen_entries.py"],
+  cmd: "python device/generic/opengl-transport/host/libs/virglrenderer/gen_entries.py --mode=funcargs $(in) --output $(out)",
   srcs: ["OpenGLESDispatch/gles2_core.entries"],
   out: ["gles2_core_functions.h"],
 }
