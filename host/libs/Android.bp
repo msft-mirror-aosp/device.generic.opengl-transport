@@ -14,11 +14,5 @@
 // limitations under the License.
 
 subdirs = [
-    "adb_connection_maintainer",
-    "config",
-    "ivserver",
-    "monitor",
-    "usbip",
     "virglrenderer",
-    "vm_manager",
 ]
