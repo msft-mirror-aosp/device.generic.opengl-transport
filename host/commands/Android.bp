@@ -16,17 +16,3 @@
 subdirs = [
     "emugen",
 ]
-
-python_binary_host {
-  name: "gen_entries_cuttlefish",
-  srcs: ["gen_entries.py"],
-  main: "gen_entries.py",
-  version: {
-    py2: {
-      enabled: true,
-    },
-    py3: {
-      enabled: false,
-    },
-  },
-}
