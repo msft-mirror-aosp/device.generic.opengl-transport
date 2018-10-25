@@ -1,0 +1,5 @@
+cc_library_headers {
+  name: "virtio_gpu_uapi_headers",
+  host_supported: true,
+  export_include_dirs: ["linux_uapi"],
+}
