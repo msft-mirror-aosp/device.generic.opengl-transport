@@ -9,5 +9,4 @@ cc_binary_host {
         "TypeFactory.cpp",
     ],
     cflags: ["-Wno-unused-parameter"],
-    defaults: ["cuttlefish_host_only"],
 }
