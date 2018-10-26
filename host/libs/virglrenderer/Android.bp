@@ -179,8 +179,6 @@ cc_library_host_shared {
     ],
     cflags: ["-Wno-unused-parameter", "-DOPENGL_DEBUG_PRINTOUT"],
     host_ldlibs: [ "-ldl" ],
-    version_script : "libvirglrenderer.lds",
-    defaults: [ "cuttlefish_host_only" ],
     generated_sources: [
       "glesv1_dec_cuttlefish_gensrc",
       "glesv3_dec_cuttlefish_gensrc",
@@ -203,4 +201,8 @@ cc_library_host_shared {
       "virtio_gpu_uapi_headers",
       "virgl_headers"
     ],
+
+    // TODO(b/118466250): Make this work on the Mac
+    version_script : "libvirglrenderer.lds",
+    defaults: [ "cuttlefish_host_only" ],
 }
