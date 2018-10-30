@@ -788,7 +788,7 @@ int virgl_renderer_create_fence(int client_fence_id, uint32_t cmd_type) {
                 g_last_submit_cmd_ctx->setFence(client_fence_id);
                 break;
             }
-            // Fall through
+            [[fallthrough]];
         default: {
             std::lock_guard<std::mutex> lk(g_fence_deque_mutex);
             g_fence_deque.push_back(client_fence_id);
