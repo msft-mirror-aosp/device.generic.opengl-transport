@@ -70,7 +70,7 @@ int main(int argc, char *argv[])
             break;
         case ':':
             fprintf(stderr, "Missing argument !!\n");
-            // fall through
+            [[fallthrough]];
         default:
             usage(argv[0]);
             exit(0);
