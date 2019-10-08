@@ -340,6 +340,14 @@ int virgl_renderer_init(void* cookie, int flags, virgl_renderer_callbacks* cb) {
         g_dpy = EGL_NO_DISPLAY;
         return ENOENT;
     }
+
+    // Our static analyzer sees the `new`ing of `config` below without any sort
+    // of attempt to free it, and warns about it. Normally, it would catch that
+    // we're pushing it into a vector in the constructor, but it hits an
+    // internal evaluation limit when trying to evaluate the loop inside of the
+    // ctor. So, it never gets to see that we escape our newly-allocated
+    // `config` instance. Silence the warning, since it's incorrect.
+    // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
     for (EGLint c = 0; c < nConfigs; c++) {
         EGLint configId;
         if (!s_egl.eglGetConfigAttrib(g_dpy, configs[c], EGL_CONFIG_ID, &configId)) {
