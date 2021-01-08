@@ -204,5 +204,5 @@ cc_library_host_shared {
 
     // TODO(b/118466250): Make this work on the Mac
     version_script : "libvirglrenderer.lds",
-    defaults: [ "cuttlefish_host_only" ],
+    defaults: [ "cuttlefish_buildhost_only" ],
 }
